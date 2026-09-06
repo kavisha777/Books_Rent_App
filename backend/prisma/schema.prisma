@@ -5,3 +5,87 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum BookStatus {
+  AVAILABLE
+  UNAVAILABLE
+}
+
+enum RentalStatus {
+  REQUESTED
+  APPROVED
+  PAYMENT_PENDING
+  CONFIRMED
+  HANDOVER_PENDING
+  ACTIVE
+  RETURN_PENDING
+  INSPECTION
+  COMPLETED
+  REJECTED
+  CANCELLED
+  OVERDUE
+  LOST
+  DISPUTED
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      UserRole @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  booksOwned Book[] @relation("BookOwner")
+  rentals    Rental[] @relation("Renter")
+  rentalsAsOwner Rental[] @relation("Owner")
+}
+
+model Book {
+  id          String     @id @default(uuid())
+  title       String
+  author      String
+  isbn        String?
+  description String?
+  condition   String?
+  status      BookStatus @default(AVAILABLE)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  ownerId String
+  owner   User   @relation("BookOwner", fields: [ownerId], references: [id])
+
+  rentals Rental[]
+
+  @@index([ownerId])
+  @@index([status])
+  @@index([title])
+}
+
+model Rental {
+  id        String       @id @default(uuid())
+  status    RentalStatus @default(REQUESTED)
+  startDate DateTime?
+  endDate   DateTime?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  bookId   String
+  renterId String
+  ownerId  String
+
+  book   Book @relation(fields: [bookId], references: [id])
+  renter User @relation("Renter", fields: [renterId], references: [id])
+  owner  User @relation("Owner", fields: [ownerId], references: [id])
+
+  @@index([bookId])
+  @@index([renterId])
+  @@index([ownerId])
+  @@index([status])
+}
