@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import apiRoutes from "./routes";
 
 const app = express();
 
@@ -14,11 +15,6 @@ app.use(helmet());
 
 app.use(express.json());
 
-app.get("/api/health", (req, res) => {
-  res.json({
-    success: true,
-    message: "BookLoop API is running",
-  });
-});
+app.use("/api", apiRoutes);
 
 export default app;
