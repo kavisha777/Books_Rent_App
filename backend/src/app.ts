@@ -1,9 +1,9 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import apiRoutes from "./routes";
-import notFoundMiddleware from "./middleware/not-found.middleware";
-import errorMiddleware from "./middleware/error.middleware";
+import apiRoutes from "./routes/index.js";
+import notFoundMiddleware from "./middleware/not-found.middleware.js";
+import errorMiddleware from "./middleware/error.middleware.js";
 
 const app = express();
 
