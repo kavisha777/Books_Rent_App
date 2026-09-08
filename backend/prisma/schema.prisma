@@ -42,9 +42,10 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  booksOwned Book[] @relation("BookOwner")
-  rentals    Rental[] @relation("Renter")
-  rentalsAsOwner Rental[] @relation("Owner")
+  booksOwned      Book[]   @relation("BookOwner")
+  rentals         Rental[] @relation("Renter")
+  rentalsAsOwner  Rental[] @relation("Owner")
+  refreshTokens   RefreshToken[]
 }
 
 model Book {
@@ -88,4 +89,17 @@ model Rental {
   @@index([renterId])
   @@index([ownerId])
   @@index([status])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }

@@ -3,6 +3,7 @@ import prisma from "../lib/prisma.js";
 import AppError from "../utils/AppError.js";
 import { loginSchema, registerSchema } from "../utils/validation.js";
 import { generateAccessToken } from "../utils/jwt.js";
+import { createRefreshToken, findRefreshToken, deleteRefreshToken, } from "../services/refresh-token.service.js";
 export const register = async (req, res, next) => {
     try {
         const validatedData = registerSchema.safeParse(req.body);
@@ -61,6 +62,7 @@ export const login = async (req, res, next) => {
             throw new AppError("Invalid email or password", 401);
         }
         const accessToken = generateAccessToken(user.id, user.role);
+        const refreshToken = await createRefreshToken(user.id);
         res.status(200).json({
             success: true,
             message: "Login successful",
@@ -69,6 +71,47 @@ export const login = async (req, res, next) => {
                 name: user.name,
                 email: user.email,
                 role: user.role,
+                accessToken,
+                refreshToken: refreshToken.token,
+            },
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+export const refreshAccessToken = async (req, res, next) => {
+    try {
+        const { refreshToken } = req.body;
+        if (!refreshToken || typeof refreshToken !== "string") {
+            throw new AppError("Refresh token is required", 400);
+        }
+        const storedToken = await findRefreshToken(refreshToken);
+        if (!storedToken) {
+            throw new AppError("Invalid refresh token", 401);
+        }
+        if (storedToken.expiresAt <= new Date()) {
+            await deleteRefreshToken(refreshToken);
+            throw new AppError("Refresh token has expired", 401);
+        }
+        const user = await prisma.user.findUnique({
+            where: {
+                id: storedToken.userId,
+            },
+            select: {
+                id: true,
+                role: true,
+            },
+        });
+        if (!user) {
+            await deleteRefreshToken(refreshToken);
+            throw new AppError("User not found", 401);
+        }
+        const accessToken = generateAccessToken(user.id, user.role);
+        res.status(200).json({
+            success: true,
+            message: "Access token refreshed successfully",
+            data: {
                 accessToken,
             },
         });
