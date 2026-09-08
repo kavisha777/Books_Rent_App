@@ -1,8 +1,10 @@
 import type { NextFunction, Request, Response } from "express";
 import bcrypt from "bcrypt";
+
 import prisma from "../lib/prisma.js";
 import AppError from "../utils/AppError.js";
-import { registerSchema , loginSchema } from "../utils/validation.js";
+import { loginSchema, registerSchema } from "../utils/validation.js";
+import { generateAccessToken } from "../utils/jwt.js";
 
 export const register = async (
   req: Request,
@@ -56,7 +58,6 @@ export const register = async (
   }
 };
 
-
 export const login = async (
   req: Request,
   res: Response,
@@ -88,6 +89,8 @@ export const login = async (
       throw new AppError("Invalid email or password", 401);
     }
 
+    const accessToken = generateAccessToken(user.id, user.role);
+
     res.status(200).json({
       success: true,
       message: "Login successful",
@@ -96,6 +99,7 @@ export const login = async (
         name: user.name,
         email: user.email,
         role: user.role,
+        accessToken,
       },
     });
   } catch (error) {
