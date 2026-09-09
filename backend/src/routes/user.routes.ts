@@ -1,23 +1,14 @@
 import { Router } from "express";
 
-import authMiddleware, {
-  type AuthenticatedRequest,
-} from "../middleware/auth.middleware.js";
+import authMiddleware from "../middleware/auth.middleware.js";
+import { getMyProfile } from "../controllers/user.controller.js";
 
 const router = Router();
 
 router.get(
   "/me",
   authMiddleware,
-  (req: AuthenticatedRequest, res) => {
-    res.json({
-      success: true,
-      message: "Authenticated user",
-      data: {
-        user: req.user,
-      },
-    });
-  }
+  getMyProfile
 );
 
 export default router;

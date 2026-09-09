@@ -177,3 +177,26 @@ export const refreshAccessToken = async (
     next(error);
   }
 };
+
+export const logout = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken || typeof refreshToken !== "string") {
+      throw new AppError("Refresh token is required", 400);
+    }
+
+    await deleteRefreshToken(refreshToken);
+
+    res.status(200).json({
+      success: true,
+      message: "Logged out successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
