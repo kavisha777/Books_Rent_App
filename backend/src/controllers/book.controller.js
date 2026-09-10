@@ -10,7 +10,7 @@ export const createBook = async (req, res, next) => {
         if (!validatedData.success) {
             throw new AppError(validatedData.error.issues[0]?.message || "Invalid book data", 400);
         }
-        const { title, author, isbn, description, condition, } = validatedData.data;
+        const { title, author, isbn, description, condition, dailyRate, securityDeposit, } = validatedData.data;
         const book = await prisma.book.create({
             data: {
                 title,
@@ -18,6 +18,8 @@ export const createBook = async (req, res, next) => {
                 isbn: isbn || null,
                 description: description || null,
                 condition: condition || null,
+                dailyRate,
+                securityDeposit,
                 ownerId: req.user.userId,
             },
         });
@@ -49,6 +51,8 @@ export const getAllBooks = async (req, res, next) => {
                 isbn: true,
                 description: true,
                 condition: true,
+                dailyRate: true,
+                securityDeposit: true,
                 status: true,
                 createdAt: true,
                 owner: {
@@ -89,6 +93,8 @@ export const getBookById = async (req, res, next) => {
                 isbn: true,
                 description: true,
                 condition: true,
+                dailyRate: true,
+                securityDeposit: true,
                 status: true,
                 createdAt: true,
                 updatedAt: true,
@@ -132,6 +138,10 @@ export const updateBook = async (req, res, next) => {
             where: {
                 id,
             },
+            select: {
+                id: true,
+                ownerId: true,
+            },
         });
         if (!existingBook) {
             throw new AppError("Book not found", 404);
@@ -160,7 +170,7 @@ export const updateBook = async (req, res, next) => {
         if (activeRental) {
             throw new AppError("Book cannot be updated while it has an active rental process", 400);
         }
-        const { title, author, isbn, description, condition, } = validatedData.data;
+        const { title, author, isbn, description, condition, dailyRate, securityDeposit, } = validatedData.data;
         const book = await prisma.book.update({
             where: {
                 id,
@@ -176,6 +186,12 @@ export const updateBook = async (req, res, next) => {
                 }),
                 ...(condition !== undefined && {
                     condition: condition || null,
+                }),
+                ...(dailyRate !== undefined && {
+                    dailyRate,
+                }),
+                ...(securityDeposit !== undefined && {
+                    securityDeposit,
                 }),
             },
         });
@@ -203,6 +219,10 @@ export const deleteBook = async (req, res, next) => {
         const existingBook = await prisma.book.findUnique({
             where: {
                 id,
+            },
+            select: {
+                id: true,
+                ownerId: true,
             },
         });
         if (!existingBook) {

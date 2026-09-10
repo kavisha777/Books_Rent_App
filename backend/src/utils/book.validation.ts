@@ -33,6 +33,14 @@ export const createBookSchema = z.object({
     .max(100, "Condition must not exceed 100 characters")
     .optional()
     .or(z.literal("")),
+
+  dailyRate: z
+    .number()
+    .positive("Daily rental rate must be greater than 0"),
+
+  securityDeposit: z
+    .number()
+    .nonnegative("Security deposit cannot be negative"),
 });
 
 export const updateBookSchema = createBookSchema.partial();

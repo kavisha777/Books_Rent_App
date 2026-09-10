@@ -5,6 +5,8 @@ export declare const createBookSchema: z.ZodObject<{
     isbn: z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>;
     description: z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>;
     condition: z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>;
+    dailyRate: z.ZodNumber;
+    securityDeposit: z.ZodNumber;
 }, z.core.$strip>;
 export declare const updateBookSchema: z.ZodObject<{
     title: z.ZodOptional<z.ZodString>;
@@ -12,6 +14,8 @@ export declare const updateBookSchema: z.ZodObject<{
     isbn: z.ZodOptional<z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>>;
     description: z.ZodOptional<z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>>;
     condition: z.ZodOptional<z.ZodUnion<[z.ZodOptional<z.ZodString>, z.ZodLiteral<"">]>>;
+    dailyRate: z.ZodOptional<z.ZodNumber>;
+    securityDeposit: z.ZodOptional<z.ZodNumber>;
 }, z.core.$strip>;
 export type CreateBookInput = z.infer<typeof createBookSchema>;
 export type UpdateBookInput = z.infer<typeof updateBookSchema>;

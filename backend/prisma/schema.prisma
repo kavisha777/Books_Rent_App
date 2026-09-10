@@ -6,6 +6,7 @@ datasource db {
   provider = "postgresql"
 }
 
+
 enum UserRole {
   USER
   ADMIN
@@ -33,6 +34,29 @@ enum RentalStatus {
   DISPUTED
 }
 
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  PAID
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum ConditionStatus {
+  GOOD
+  DAMAGED
+  LOST
+  UNVERIFIED
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  REJECTED
+}
+
 model User {
   id        String   @id @default(uuid())
   name      String
@@ -42,10 +66,13 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  booksOwned      Book[]   @relation("BookOwner")
-  rentals         Rental[] @relation("Renter")
-  rentalsAsOwner  Rental[] @relation("Owner")
-  refreshTokens   RefreshToken[]
+  booksOwned     Book[]        @relation("BookOwner")
+  rentals        Rental[]      @relation("Renter")
+  rentalsAsOwner Rental[]      @relation("Owner")
+  refreshTokens  RefreshToken[]
+  reviewsGiven   Review[]      @relation("Reviewer")
+  reviewsReceived Review[]     @relation("Reviewee")
+  disputes       Dispute[]
 }
 
 model Book {
@@ -56,26 +83,48 @@ model Book {
   description String?
   condition   String?
   status      BookStatus @default(AVAILABLE)
+
+  dailyRate       Decimal @db.Decimal(10, 2)
+  securityDeposit Decimal @db.Decimal(10, 2)
+
+
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
+  
 
   ownerId String
   owner   User   @relation("BookOwner", fields: [ownerId], references: [id])
 
   rentals Rental[]
+  reviews  Review[]
 
   @@index([ownerId])
   @@index([status])
   @@index([title])
+  @@index([author])
 }
 
 model Rental {
-  id        String       @id @default(uuid())
-  status    RentalStatus @default(REQUESTED)
-  startDate DateTime?
-  endDate   DateTime?
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  id     String       @id @default(uuid())
+  status RentalStatus @default(REQUESTED)
+
+  startDate DateTime
+  endDate   DateTime
+
+  dailyRate      Decimal @db.Decimal(10, 2)
+  rentalAmount   Decimal @db.Decimal(10, 2)
+  securityDeposit Decimal @db.Decimal(10, 2)
+
+  paymentStatus PaymentStatus @default(PENDING)
+
+  approvedAt    DateTime?
+  confirmedAt   DateTime?
+  handoverAt    DateTime?
+  returnedAt    DateTime?
+  completedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   bookId   String
   renterId String
@@ -85,10 +134,105 @@ model Rental {
   renter User @relation("Renter", fields: [renterId], references: [id])
   owner  User @relation("Owner", fields: [ownerId], references: [id])
 
+  conditionRecords ConditionRecord[]
+  payments         Payment[]
+  disputes         Dispute[]
+  review           Review?
+
   @@index([bookId])
   @@index([renterId])
   @@index([ownerId])
   @@index([status])
+  @@index([paymentStatus])
+  @@index([startDate])
+  @@index([endDate])
+}
+
+model ConditionRecord {
+  id        String   @id @default(uuid())
+  status    ConditionStatus
+  notes     String?
+  imageUrls String[] @default([])
+  createdAt DateTime @default(now())
+
+  rentalId String
+  rental   Rental @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+
+  @@index([rentalId])
+}
+
+model Payment {
+  id String @id @default(uuid())
+
+  amount   Decimal @db.Decimal(10, 2)
+  currency String  @default("LKR")
+
+  status PaymentStatus @default(PENDING)
+
+  provider        String?
+  providerPaymentId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rentalId String
+  rental   Rental @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+
+  @@index([rentalId])
+  @@index([status])
+  @@index([providerPaymentId])
+}
+
+model Dispute {
+  id String @id @default(uuid())
+
+  reason      String
+  description String
+
+  status DisputeStatus @default(OPEN)
+
+  evidenceUrls String[] @default([])
+
+  resolution String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rentalId String
+  rental   Rental @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+
+  raisedById String
+  raisedBy   User @relation(fields: [raisedById], references: [id])
+
+  @@index([rentalId])
+  @@index([raisedById])
+  @@index([status])
+}
+
+model Review {
+  id String @id @default(uuid())
+
+  rating  Int
+  comment String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rentalId String @unique
+  rental   Rental @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+
+  reviewerId String
+  reviewer   User @relation("Reviewer", fields: [reviewerId], references: [id])
+
+  revieweeId String
+  reviewee   User @relation("Reviewee", fields: [revieweeId], references: [id])
+
+  bookId String
+  book   Book @relation(fields: [bookId], references: [id])
+
+  @@index([reviewerId])
+  @@index([revieweeId])
+  @@index([bookId])
 }
 
 model RefreshToken {

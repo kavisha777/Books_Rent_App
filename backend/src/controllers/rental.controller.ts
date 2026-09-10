@@ -1,17 +1,11 @@
-import type {
-  NextFunction,
-  Response,
-} from "express";
+import type { NextFunction, Response } from "express";
+
+import { RentalStatus } from "@prisma/client";
 
 import prisma from "../lib/prisma.js";
-import { RentalStatus } from "@prisma/client";
 import AppError from "../utils/AppError.js";
-import type {
-  AuthenticatedRequest,
-} from "../middleware/auth.middleware.js";
-import {
-  createRentalSchema,
-} from "../utils/rental.validation.js";
+import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
+import { createRentalSchema } from "../utils/rental.validation.js";
 
 const ACTIVE_RENTAL_STATUSES: RentalStatus[] = [
   RentalStatus.REQUESTED,
@@ -25,9 +19,21 @@ const ACTIVE_RENTAL_STATUSES: RentalStatus[] = [
   RentalStatus.OVERDUE,
   RentalStatus.DISPUTED,
 ];
-/**
- * Create a rental request
- */
+
+const calculateRentalDays = (
+  startDate: Date,
+  endDate: Date
+): number => {
+  const difference =
+    endDate.getTime() - startDate.getTime();
+
+  const days = Math.ceil(
+    difference / (1000 * 60 * 60 * 24)
+  );
+
+  return Math.max(days, 1);
+};
+
 export const createRental = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -35,14 +41,12 @@ export const createRental = async (
 ) => {
   try {
     if (!req.user) {
-      throw new AppError(
-        "Authentication required",
-        401
-      );
+      throw new AppError("Authentication required", 401);
     }
 
-    const validatedData =
-      createRentalSchema.safeParse(req.body);
+    const validatedData = createRentalSchema.safeParse(
+      req.body
+    );
 
     if (!validatedData.success) {
       throw new AppError(
@@ -54,24 +58,36 @@ export const createRental = async (
 
     const {
       bookId,
-      startDate,
-      endDate,
+      startDate: startDateString,
+      endDate: endDateString,
     } = validatedData.data;
 
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    const startDate = new Date(startDateString);
+    const endDate = new Date(endDateString);
+
+    if (startDate <= new Date()) {
+      throw new AppError(
+        "Rental start date must be in the future",
+        400
+      );
+    }
 
     const book = await prisma.book.findUnique({
       where: {
         id: bookId,
       },
+      select: {
+        id: true,
+        title: true,
+        ownerId: true,
+        status: true,
+        dailyRate: true,
+        securityDeposit: true,
+      },
     });
 
     if (!book) {
-      throw new AppError(
-        "Book not found",
-        404
-      );
+      throw new AppError("Book not found", 404);
     }
 
     if (book.ownerId === req.user.userId) {
@@ -88,6 +104,13 @@ export const createRental = async (
       );
     }
 
+    if (book.dailyRate.lessThanOrEqualTo(0)) {
+      throw new AppError(
+        "This book does not have a valid rental price",
+        400
+      );
+    }
+
     const overlappingRental =
       await prisma.rental.findFirst({
         where: {
@@ -96,29 +119,41 @@ export const createRental = async (
             in: ACTIVE_RENTAL_STATUSES,
           },
           startDate: {
-            lt: end,
+            lt: endDate,
           },
           endDate: {
-            gt: start,
+            gt: startDate,
           },
         },
       });
 
     if (overlappingRental) {
       throw new AppError(
-        "This book already has a rental request for the selected dates",
+        "This book is already requested or rented for the selected dates",
         409
       );
     }
 
+    const rentalDays = calculateRentalDays(
+      startDate,
+      endDate
+    );
+
+    const rentalAmount =
+      Number(book.dailyRate) * rentalDays;
+
     const rental = await prisma.rental.create({
       data: {
-        bookId,
+        bookId: book.id,
         renterId: req.user.userId,
         ownerId: book.ownerId,
-        startDate: start,
-        endDate: end,
-        status: "REQUESTED",
+        startDate,
+        endDate,
+        dailyRate: book.dailyRate,
+        rentalAmount,
+        securityDeposit: book.securityDeposit,
+        status: RentalStatus.REQUESTED,
+        paymentStatus: "PENDING",
       },
       include: {
         book: {
@@ -128,14 +163,13 @@ export const createRental = async (
             author: true,
           },
         },
-        renter: {
+        owner: {
           select: {
             id: true,
             name: true,
-            email: true,
           },
         },
-        owner: {
+        renter: {
           select: {
             id: true,
             name: true,
@@ -149,6 +183,7 @@ export const createRental = async (
       message: "Rental request created successfully",
       data: {
         rental,
+        rentalDays,
       },
     });
   } catch (error) {
@@ -156,9 +191,6 @@ export const createRental = async (
   }
 };
 
-/**
- * Get renter's rentals
- */
 export const getMyRentals = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -166,10 +198,7 @@ export const getMyRentals = async (
 ) => {
   try {
     if (!req.user) {
-      throw new AppError(
-        "Authentication required",
-        401
-      );
+      throw new AppError("Authentication required", 401);
     }
 
     const rentals = await prisma.rental.findMany({
@@ -185,8 +214,8 @@ export const getMyRentals = async (
             id: true,
             title: true,
             author: true,
-            condition: true,
-            status: true,
+            dailyRate: true,
+            securityDeposit: true,
           },
         },
         owner: {
@@ -211,9 +240,6 @@ export const getMyRentals = async (
   }
 };
 
-/**
- * Get rental requests for books owned by the user
- */
 export const getOwnerRentalRequests = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -221,10 +247,7 @@ export const getOwnerRentalRequests = async (
 ) => {
   try {
     if (!req.user) {
-      throw new AppError(
-        "Authentication required",
-        401
-      );
+      throw new AppError("Authentication required", 401);
     }
 
     const rentals = await prisma.rental.findMany({
@@ -240,7 +263,6 @@ export const getOwnerRentalRequests = async (
             id: true,
             title: true,
             author: true,
-            condition: true,
           },
         },
         renter: {
@@ -255,8 +277,7 @@ export const getOwnerRentalRequests = async (
 
     res.status(200).json({
       success: true,
-      message:
-        "Rental requests retrieved successfully",
+      message: "Owner rental requests retrieved successfully",
       data: {
         rentals,
         count: rentals.length,
@@ -267,9 +288,6 @@ export const getOwnerRentalRequests = async (
   }
 };
 
-/**
- * Get one rental
- */
 export const getRentalById = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -277,19 +295,13 @@ export const getRentalById = async (
 ) => {
   try {
     if (!req.user) {
-      throw new AppError(
-        "Authentication required",
-        401
-      );
+      throw new AppError("Authentication required", 401);
     }
 
     const id = req.params.id;
 
     if (typeof id !== "string") {
-      throw new AppError(
-        "Invalid rental ID",
-        400
-      );
+      throw new AppError("Invalid rental ID", 400);
     }
 
     const rental = await prisma.rental.findUnique({
@@ -304,14 +316,14 @@ export const getRentalById = async (
             author: true,
             isbn: true,
             condition: true,
-            status: true,
+            dailyRate: true,
+            securityDeposit: true,
           },
         },
         renter: {
           select: {
             id: true,
             name: true,
-            email: true,
           },
         },
         owner: {
@@ -320,14 +332,15 @@ export const getRentalById = async (
             name: true,
           },
         },
+        conditionRecords: true,
+        payments: true,
+        disputes: true,
+        review: true,
       },
     });
 
     if (!rental) {
-      throw new AppError(
-        "Rental not found",
-        404
-      );
+      throw new AppError("Rental not found", 404);
     }
 
     const isRenter =
@@ -336,7 +349,9 @@ export const getRentalById = async (
     const isOwner =
       rental.ownerId === req.user.userId;
 
-    if (!isRenter && !isOwner) {
+    const isAdmin = req.user.role === "ADMIN";
+
+    if (!isRenter && !isOwner && !isAdmin) {
       throw new AppError(
         "You do not have access to this rental",
         403
@@ -355,9 +370,6 @@ export const getRentalById = async (
   }
 };
 
-/**
- * Owner approves rental request
- */
 export const approveRental = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -365,32 +377,29 @@ export const approveRental = async (
 ) => {
   try {
     if (!req.user) {
-      throw new AppError(
-        "Authentication required",
-        401
-      );
+      throw new AppError("Authentication required", 401);
     }
 
     const id = req.params.id;
 
     if (typeof id !== "string") {
-      throw new AppError(
-        "Invalid rental ID",
-        400
-      );
+      throw new AppError("Invalid rental ID", 400);
     }
 
     const rental = await prisma.rental.findUnique({
       where: {
         id,
       },
+      select: {
+        id: true,
+        ownerId: true,
+        status: true,
+        bookId: true,
+      },
     });
 
     if (!rental) {
-      throw new AppError(
-        "Rental not found",
-        404
-      );
+      throw new AppError("Rental not found", 404);
     }
 
     if (rental.ownerId !== req.user.userId) {
@@ -400,99 +409,48 @@ export const approveRental = async (
       );
     }
 
-    if (rental.status !== "REQUESTED") {
+    if (rental.status !== RentalStatus.REQUESTED) {
       throw new AppError(
         "Only requested rentals can be approved",
         400
       );
     }
 
-    /*
-     * Make sure the rental has valid dates.
-     */
-    if (!rental.startDate || !rental.endDate) {
-      throw new AppError(
-        "Rental dates are required",
-        400
-      );
-    }
-
-    /*
-     * Re-check overlapping rentals before approval.
-     */
-    const overlappingRental =
-      await prisma.rental.findFirst({
-        where: {
-          id: {
-            not: rental.id,
-          },
-          bookId: rental.bookId,
-          status: {
-            in: [
-              "APPROVED",
-              "PAYMENT_PENDING",
-              "CONFIRMED",
-              "HANDOVER_PENDING",
-              "ACTIVE",
-              "RETURN_PENDING",
-              "INSPECTION",
-              "OVERDUE",
-              "DISPUTED",
-            ],
-          },
-          startDate: {
-            lt: rental.endDate,
-          },
-          endDate: {
-            gt: rental.startDate,
-          },
-        },
-      });
-
-    if (overlappingRental) {
-      throw new AppError(
-        "This book is already reserved for overlapping dates",
-        409
-      );
-    }
-
-    const updatedRental =
-      await prisma.rental.update({
-        where: {
-          id,
-        },
-        data: {
-          status: "APPROVED",
-        },
-        include: {
-          book: {
-            select: {
-              id: true,
-              title: true,
-              author: true,
+    const approvedRental =
+      await prisma.$transaction(async (tx) => {
+        const updatedRental =
+          await tx.rental.update({
+            where: {
+              id,
             },
-          },
-          renter: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
+            data: {
+              status: RentalStatus.APPROVED,
+              approvedAt: new Date(),
             },
-          },
-          owner: {
-            select: {
-              id: true,
-              name: true,
+            include: {
+              book: {
+                select: {
+                  id: true,
+                  title: true,
+                },
+              },
+              renter: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
             },
-          },
-        },
+          });
+
+        return updatedRental;
       });
 
     res.status(200).json({
       success: true,
-      message: "Rental approved successfully",
+      message: "Rental request approved",
       data: {
-        rental: updatedRental,
+        rental: approvedRental,
       },
     });
   } catch (error) {
@@ -500,9 +458,6 @@ export const approveRental = async (
   }
 };
 
-/**
- * Owner rejects rental request
- */
 export const rejectRental = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -510,32 +465,28 @@ export const rejectRental = async (
 ) => {
   try {
     if (!req.user) {
-      throw new AppError(
-        "Authentication required",
-        401
-      );
+      throw new AppError("Authentication required", 401);
     }
 
     const id = req.params.id;
 
     if (typeof id !== "string") {
-      throw new AppError(
-        "Invalid rental ID",
-        400
-      );
+      throw new AppError("Invalid rental ID", 400);
     }
 
     const rental = await prisma.rental.findUnique({
       where: {
         id,
       },
+      select: {
+        id: true,
+        ownerId: true,
+        status: true,
+      },
     });
 
     if (!rental) {
-      throw new AppError(
-        "Rental not found",
-        404
-      );
+      throw new AppError("Rental not found", 404);
     }
 
     if (rental.ownerId !== req.user.userId) {
@@ -545,28 +496,28 @@ export const rejectRental = async (
       );
     }
 
-    if (rental.status !== "REQUESTED") {
+    if (rental.status !== RentalStatus.REQUESTED) {
       throw new AppError(
         "Only requested rentals can be rejected",
         400
       );
     }
 
-    const updatedRental =
+    const rejectedRental =
       await prisma.rental.update({
         where: {
           id,
         },
         data: {
-          status: "REJECTED",
+          status: RentalStatus.REJECTED,
         },
       });
 
     res.status(200).json({
       success: true,
-      message: "Rental rejected successfully",
+      message: "Rental request rejected",
       data: {
-        rental: updatedRental,
+        rental: rejectedRental,
       },
     });
   } catch (error) {
@@ -574,9 +525,6 @@ export const rejectRental = async (
   }
 };
 
-/**
- * Renter cancels rental request
- */
 export const cancelRental = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -584,32 +532,28 @@ export const cancelRental = async (
 ) => {
   try {
     if (!req.user) {
-      throw new AppError(
-        "Authentication required",
-        401
-      );
+      throw new AppError("Authentication required", 401);
     }
 
     const id = req.params.id;
 
     if (typeof id !== "string") {
-      throw new AppError(
-        "Invalid rental ID",
-        400
-      );
+      throw new AppError("Invalid rental ID", 400);
     }
 
     const rental = await prisma.rental.findUnique({
       where: {
         id,
       },
+      select: {
+        id: true,
+        renterId: true,
+        status: true,
+      },
     });
 
     if (!rental) {
-      throw new AppError(
-        "Rental not found",
-        404
-      );
+      throw new AppError("Rental not found", 404);
     }
 
     if (rental.renterId !== req.user.userId) {
@@ -619,23 +563,26 @@ export const cancelRental = async (
       );
     }
 
-    if (
-      rental.status !== "REQUESTED" &&
-      rental.status !== "APPROVED"
-    ) {
+    const cancellableStatuses: RentalStatus[] = [
+      RentalStatus.REQUESTED,
+      RentalStatus.APPROVED,
+      RentalStatus.PAYMENT_PENDING,
+    ];
+
+    if (!cancellableStatuses.includes(rental.status)) {
       throw new AppError(
-        "This rental cannot be cancelled at its current stage",
+        "This rental can no longer be cancelled",
         400
       );
     }
 
-    const updatedRental =
+    const cancelledRental =
       await prisma.rental.update({
         where: {
           id,
         },
         data: {
-          status: "CANCELLED",
+          status: RentalStatus.CANCELLED,
         },
       });
 
@@ -643,7 +590,7 @@ export const cancelRental = async (
       success: true,
       message: "Rental cancelled successfully",
       data: {
-        rental: updatedRental,
+        rental: cancelledRental,
       },
     });
   } catch (error) {

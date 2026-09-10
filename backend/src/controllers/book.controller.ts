@@ -33,6 +33,8 @@ export const createBook = async (
       isbn,
       description,
       condition,
+      dailyRate,
+      securityDeposit,
     } = validatedData.data;
 
     const book = await prisma.book.create({
@@ -42,6 +44,8 @@ export const createBook = async (
         isbn: isbn || null,
         description: description || null,
         condition: condition || null,
+        dailyRate,
+        securityDeposit,
         ownerId: req.user.userId,
       },
     });
@@ -78,6 +82,8 @@ export const getAllBooks = async (
         isbn: true,
         description: true,
         condition: true,
+        dailyRate: true,
+        securityDeposit: true,
         status: true,
         createdAt: true,
         owner: {
@@ -125,6 +131,8 @@ export const getBookById = async (
         isbn: true,
         description: true,
         condition: true,
+        dailyRate: true,
+        securityDeposit: true,
         status: true,
         createdAt: true,
         updatedAt: true,
@@ -182,6 +190,10 @@ export const updateBook = async (
       where: {
         id,
       },
+      select: {
+        id: true,
+        ownerId: true,
+      },
     });
 
     if (!existingBook) {
@@ -227,6 +239,8 @@ export const updateBook = async (
       isbn,
       description,
       condition,
+      dailyRate,
+      securityDeposit,
     } = validatedData.data;
 
     const book = await prisma.book.update({
@@ -244,6 +258,12 @@ export const updateBook = async (
         }),
         ...(condition !== undefined && {
           condition: condition || null,
+        }),
+        ...(dailyRate !== undefined && {
+          dailyRate,
+        }),
+        ...(securityDeposit !== undefined && {
+          securityDeposit,
         }),
       },
     });
@@ -279,6 +299,10 @@ export const deleteBook = async (
     const existingBook = await prisma.book.findUnique({
       where: {
         id,
+      },
+      select: {
+        id: true,
+        ownerId: true,
       },
     });
 
