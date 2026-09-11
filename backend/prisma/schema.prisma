@@ -72,31 +72,28 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  booksOwned     Book[]        @relation("BookOwner")
-  rentals        Rental[]      @relation("Renter")
-  rentalsAsOwner Rental[]      @relation("Owner")
-  refreshTokens  RefreshToken[]
-  reviewsGiven   Review[]      @relation("Reviewer")
-  reviewsReceived Review[]     @relation("Reviewee")
-  disputes       Dispute[]
+  booksOwned      Book[]        @relation("BookOwner")
+  rentals         Rental[]      @relation("Renter")
+  rentalsAsOwner  Rental[]      @relation("Owner")
+  refreshTokens   RefreshToken[]
+  reviewsGiven    Review[]      @relation("Reviewer")
+  reviewsReceived Review[]      @relation("Reviewee")
+  disputes        Dispute[]
 }
 
 model Book {
-  id          String     @id @default(uuid())
-  title       String
-  author      String
-  isbn        String?
-  description String?
-  condition   String?
-  status      BookStatus @default(AVAILABLE)
+  id              String     @id @default(uuid())
+  title           String
+  author          String
+  isbn            String?
+  description     String?
+  condition       String?
+  status          BookStatus @default(AVAILABLE)
+  dailyRate       Decimal    @db.Decimal(10, 2)
+  securityDeposit Decimal    @db.Decimal(10, 2)
 
-  dailyRate       Decimal @db.Decimal(10, 2)
-  securityDeposit Decimal @db.Decimal(10, 2)
-
-
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   ownerId String
   owner   User   @relation("BookOwner", fields: [ownerId], references: [id])
@@ -117,17 +114,17 @@ model Rental {
   startDate DateTime
   endDate   DateTime
 
-  dailyRate      Decimal @db.Decimal(10, 2)
-  rentalAmount   Decimal @db.Decimal(10, 2)
+  dailyRate       Decimal @db.Decimal(10, 2)
+  rentalAmount    Decimal @db.Decimal(10, 2)
   securityDeposit Decimal @db.Decimal(10, 2)
 
   paymentStatus PaymentStatus @default(PENDING)
 
-  approvedAt    DateTime?
-  confirmedAt   DateTime?
-  handoverAt    DateTime?
-  returnedAt    DateTime?
-  completedAt   DateTime?
+  approvedAt  DateTime?
+  confirmedAt DateTime?
+  handoverAt  DateTime?
+  returnedAt  DateTime?
+  completedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -155,11 +152,11 @@ model Rental {
 }
 
 model ConditionRecord {
-  id        String   @id @default(uuid())
+  id        String         @id @default(uuid())
   status    ConditionStatus
   notes     String?
-  imageUrls String[] @default([])
-  createdAt DateTime @default(now())
+  imageUrls String[]       @default([])
+  createdAt DateTime       @default(now())
 
   rentalId String
   rental   Rental @relation(fields: [rentalId], references: [id], onDelete: Cascade)
@@ -176,7 +173,7 @@ model Payment {
 
   status PaymentStatus @default(PENDING)
 
-  provider         String?
+  provider          String?
   providerPaymentId String?
 
   createdAt DateTime @default(now())
@@ -226,7 +223,7 @@ model Review {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  rentalId String @unique
+  rentalId String
   rental   Rental @relation(fields: [rentalId], references: [id], onDelete: Cascade)
 
   reviewerId String
@@ -238,6 +235,7 @@ model Review {
   bookId String
   book   Book @relation(fields: [bookId], references: [id])
 
+  @@unique([rentalId, reviewerId])
   @@index([reviewerId])
   @@index([revieweeId])
   @@index([bookId])

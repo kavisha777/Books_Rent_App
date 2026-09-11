@@ -5,6 +5,8 @@ import authRoutes from "./auth.routes.js";
 import userRoutes from "./user.routes.js";
 import bookRoutes from "./book.routes.js";
 import rentalRoutes from "./rental.routes.js";
+import conditionRoutes from "./condition.routes.js";
+
 
 const router = Router();
 
@@ -29,5 +31,7 @@ router.use(
   "/rentals",
   rentalRoutes
 );
+
+router.use(conditionRoutes);
 
 export default router;
