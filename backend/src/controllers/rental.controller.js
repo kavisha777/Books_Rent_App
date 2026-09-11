@@ -444,4 +444,306 @@ export const cancelRental = async (req, res, next) => {
         next(error);
     }
 };
+export const confirmPayment = async (req, res, next) => {
+    try {
+        if (!req.user) {
+            throw new AppError("Authentication required", 401);
+        }
+        const id = req.params.id;
+        if (typeof id !== "string") {
+            throw new AppError("Invalid rental ID", 400);
+        }
+        const rental = await prisma.rental.findUnique({
+            where: { id },
+            select: {
+                id: true,
+                renterId: true,
+                status: true,
+                paymentStatus: true,
+            },
+        });
+        if (!rental) {
+            throw new AppError("Rental not found", 404);
+        }
+        if (rental.renterId !== req.user.userId) {
+            throw new AppError("Only the renter can confirm payment", 403);
+        }
+        if (rental.status !== RentalStatus.APPROVED) {
+            throw new AppError("Only approved rentals can proceed to payment", 400);
+        }
+        const updatedRental = await prisma.$transaction(async (tx) => {
+            await tx.payment.create({
+                data: {
+                    amount: rental.paymentStatus === "PAID"
+                        ? 0
+                        : 1,
+                    currency: "LKR",
+                    status: "PAID",
+                    provider: "MOCK",
+                    providerPaymentId: `MOCK-${rental.id}`,
+                    rentalId: rental.id,
+                },
+            });
+            return tx.rental.update({
+                where: { id },
+                data: {
+                    status: RentalStatus.CONFIRMED,
+                    paymentStatus: "PAID",
+                    confirmedAt: new Date(),
+                },
+            });
+        });
+        res.status(200).json({
+            success: true,
+            message: "Payment confirmed successfully",
+            data: {
+                rental: updatedRental,
+            },
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+export const markHandover = async (req, res, next) => {
+    try {
+        if (!req.user) {
+            throw new AppError("Authentication required", 401);
+        }
+        const id = req.params.id;
+        if (typeof id !== "string") {
+            throw new AppError("Invalid rental ID", 400);
+        }
+        const rental = await prisma.rental.findUnique({
+            where: { id },
+            select: {
+                id: true,
+                renterId: true,
+                ownerId: true,
+                status: true,
+            },
+        });
+        if (!rental) {
+            throw new AppError("Rental not found", 404);
+        }
+        const isOwner = rental.ownerId === req.user.userId;
+        const isRenter = rental.renterId === req.user.userId;
+        if (!isOwner && !isRenter) {
+            throw new AppError("You do not have access to this rental", 403);
+        }
+        if (rental.status !== RentalStatus.CONFIRMED) {
+            throw new AppError("Only confirmed rentals can proceed to handover", 400);
+        }
+        const updatedRental = await prisma.rental.update({
+            where: { id },
+            data: {
+                status: RentalStatus.HANDOVER_PENDING,
+            },
+        });
+        res.status(200).json({
+            success: true,
+            message: "Rental moved to handover",
+            data: {
+                rental: updatedRental,
+            },
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+export const startRental = async (req, res, next) => {
+    try {
+        if (!req.user) {
+            throw new AppError("Authentication required", 401);
+        }
+        const id = req.params.id;
+        if (typeof id !== "string") {
+            throw new AppError("Invalid rental ID", 400);
+        }
+        const rental = await prisma.rental.findUnique({
+            where: { id },
+            select: {
+                id: true,
+                renterId: true,
+                ownerId: true,
+                status: true,
+            },
+        });
+        if (!rental) {
+            throw new AppError("Rental not found", 404);
+        }
+        const isOwner = rental.ownerId === req.user.userId;
+        const isRenter = rental.renterId === req.user.userId;
+        if (!isOwner && !isRenter) {
+            throw new AppError("You do not have access to this rental", 403);
+        }
+        if (rental.status !== RentalStatus.HANDOVER_PENDING) {
+            throw new AppError("Rental must be in handover status first", 400);
+        }
+        const updatedRental = await prisma.rental.update({
+            where: { id },
+            data: {
+                status: RentalStatus.ACTIVE,
+                handoverAt: new Date(),
+            },
+        });
+        res.status(200).json({
+            success: true,
+            message: "Rental started successfully",
+            data: {
+                rental: updatedRental,
+            },
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+export const requestReturn = async (req, res, next) => {
+    try {
+        if (!req.user) {
+            throw new AppError("Authentication required", 401);
+        }
+        const id = req.params.id;
+        if (typeof id !== "string") {
+            throw new AppError("Invalid rental ID", 400);
+        }
+        const rental = await prisma.rental.findUnique({
+            where: { id },
+            select: {
+                id: true,
+                renterId: true,
+                status: true,
+            },
+        });
+        if (!rental) {
+            throw new AppError("Rental not found", 404);
+        }
+        if (rental.renterId !== req.user.userId) {
+            throw new AppError("Only the renter can request a return", 403);
+        }
+        if (rental.status !== RentalStatus.ACTIVE) {
+            throw new AppError("Only active rentals can be returned", 400);
+        }
+        const updatedRental = await prisma.rental.update({
+            where: { id },
+            data: {
+                status: RentalStatus.RETURN_PENDING,
+            },
+        });
+        res.status(200).json({
+            success: true,
+            message: "Book return requested",
+            data: {
+                rental: updatedRental,
+            },
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+export const startInspection = async (req, res, next) => {
+    try {
+        if (!req.user) {
+            throw new AppError("Authentication required", 401);
+        }
+        const id = req.params.id;
+        if (typeof id !== "string") {
+            throw new AppError("Invalid rental ID", 400);
+        }
+        const rental = await prisma.rental.findUnique({
+            where: { id },
+            select: {
+                id: true,
+                ownerId: true,
+                status: true,
+            },
+        });
+        if (!rental) {
+            throw new AppError("Rental not found", 404);
+        }
+        if (rental.ownerId !== req.user.userId) {
+            throw new AppError("Only the book owner can inspect the returned book", 403);
+        }
+        if (rental.status !== RentalStatus.RETURN_PENDING) {
+            throw new AppError("Book must be returned before inspection", 400);
+        }
+        const updatedRental = await prisma.rental.update({
+            where: { id },
+            data: {
+                status: RentalStatus.INSPECTION,
+                returnedAt: new Date(),
+            },
+        });
+        res.status(200).json({
+            success: true,
+            message: "Book moved to inspection",
+            data: {
+                rental: updatedRental,
+            },
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+export const completeRental = async (req, res, next) => {
+    try {
+        if (!req.user) {
+            throw new AppError("Authentication required", 401);
+        }
+        const id = req.params.id;
+        if (typeof id !== "string") {
+            throw new AppError("Invalid rental ID", 400);
+        }
+        const rental = await prisma.rental.findUnique({
+            where: { id },
+            select: {
+                id: true,
+                ownerId: true,
+                status: true,
+                bookId: true,
+            },
+        });
+        if (!rental) {
+            throw new AppError("Rental not found", 404);
+        }
+        if (rental.ownerId !== req.user.userId) {
+            throw new AppError("Only the book owner can complete the inspection", 403);
+        }
+        if (rental.status !== RentalStatus.INSPECTION) {
+            throw new AppError("Rental must be under inspection before completion", 400);
+        }
+        const completedRental = await prisma.$transaction(async (tx) => {
+            const updatedRental = await tx.rental.update({
+                where: { id },
+                data: {
+                    status: RentalStatus.COMPLETED,
+                    completedAt: new Date(),
+                },
+            });
+            await tx.book.update({
+                where: {
+                    id: rental.bookId,
+                },
+                data: {
+                    status: "AVAILABLE",
+                },
+            });
+            return updatedRental;
+        });
+        res.status(200).json({
+            success: true,
+            message: "Rental completed successfully",
+            data: {
+                rental: completedRental,
+            },
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
 //# sourceMappingURL=rental.controller.js.map

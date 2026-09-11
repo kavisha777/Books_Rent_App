@@ -7,4 +7,10 @@ export declare const getRentalById: (req: AuthenticatedRequest, res: Response, n
 export declare const approveRental: (req: AuthenticatedRequest, res: Response, next: NextFunction) => Promise<void>;
 export declare const rejectRental: (req: AuthenticatedRequest, res: Response, next: NextFunction) => Promise<void>;
 export declare const cancelRental: (req: AuthenticatedRequest, res: Response, next: NextFunction) => Promise<void>;
+export declare const confirmPayment: (req: AuthenticatedRequest, res: Response, next: NextFunction) => Promise<void>;
+export declare const markHandover: (req: AuthenticatedRequest, res: Response, next: NextFunction) => Promise<void>;
+export declare const startRental: (req: AuthenticatedRequest, res: Response, next: NextFunction) => Promise<void>;
+export declare const requestReturn: (req: AuthenticatedRequest, res: Response, next: NextFunction) => Promise<void>;
+export declare const startInspection: (req: AuthenticatedRequest, res: Response, next: NextFunction) => Promise<void>;
+export declare const completeRental: (req: AuthenticatedRequest, res: Response, next: NextFunction) => Promise<void>;
 //# sourceMappingURL=rental.controller.d.ts.map

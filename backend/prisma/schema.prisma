@@ -6,6 +6,12 @@ datasource db {
   provider = "postgresql"
 }
 
+enum PaymentType {
+  RENTAL
+  SECURITY_DEPOSIT
+  REFUND
+  DAMAGE_CLAIM
+}
 
 enum UserRole {
   USER
@@ -164,12 +170,13 @@ model ConditionRecord {
 model Payment {
   id String @id @default(uuid())
 
+  type     PaymentType
   amount   Decimal @db.Decimal(10, 2)
   currency String  @default("LKR")
 
   status PaymentStatus @default(PENDING)
 
-  provider        String?
+  provider         String?
   providerPaymentId String?
 
   createdAt DateTime @default(now())
@@ -180,6 +187,7 @@ model Payment {
 
   @@index([rentalId])
   @@index([status])
+  @@index([type])
   @@index([providerPaymentId])
 }
 
