@@ -4,12 +4,11 @@ import AppError from "../utils/AppError.js";
 export const createMockRentalPayment = async (
   rentalId: string
 ) => {
-  const rental =
-    await prisma.rental.findUnique({
-      where: {
-        id: rentalId,
-      },
-    });
+  const rental = await prisma.rental.findUnique({
+    where: {
+      id: rentalId,
+    },
+  });
 
   if (!rental) {
     throw new AppError(
