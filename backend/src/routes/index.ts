@@ -5,8 +5,11 @@ import authRoutes from "./auth.routes.js";
 import userRoutes from "./user.routes.js";
 import bookRoutes from "./book.routes.js";
 import rentalRoutes from "./rental.routes.js";
+import paymentRoutes from "./payment.routes.js";
 import conditionRoutes from "./condition.routes.js";
-
+import reviewRoutes from "./review.routes.js";
+import disputeRoutes from "./dispute.routes.js";
+import adminRoutes from "./admin.routes.js";
 
 const router = Router();
 
@@ -32,6 +35,20 @@ router.use(
   rentalRoutes
 );
 
+router.use(
+  "/payments",
+  paymentRoutes
+);
+
 router.use(conditionRoutes);
+
+router.use(reviewRoutes);
+
+router.use(disputeRoutes);
+
+router.use(
+  "/admin",
+  adminRoutes
+);
 
 export default router;

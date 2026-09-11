@@ -7,14 +7,33 @@ import {
   logout,
 } from "../controllers/auth.controller.js";
 
+import {
+  authRateLimiter,
+} from "../middleware/rate-limit.middleware.js";
+
 const router = Router();
 
-router.post("/register", register);
+router.post(
+  "/register",
+  authRateLimiter,
+  register
+);
 
-router.post("/login", login);
+router.post(
+  "/login",
+  authRateLimiter,
+  login
+);
 
-router.post("/refresh", refreshAccessToken);
+router.post(
+  "/refresh",
+  authRateLimiter,
+  refreshAccessToken
+);
 
-router.post("/logout", logout);
+router.post(
+  "/logout",
+  logout
+);
 
 export default router;

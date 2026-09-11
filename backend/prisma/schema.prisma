@@ -72,25 +72,26 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  booksOwned      Book[]        @relation("BookOwner")
-  rentals         Rental[]      @relation("Renter")
-  rentalsAsOwner  Rental[]      @relation("Owner")
+  booksOwned      Book[]         @relation("BookOwner")
+  rentals         Rental[]       @relation("Renter")
+  rentalsAsOwner  Rental[]       @relation("Owner")
   refreshTokens   RefreshToken[]
-  reviewsGiven    Review[]      @relation("Reviewer")
-  reviewsReceived Review[]      @relation("Reviewee")
+  reviewsGiven    Review[]       @relation("Reviewer")
+  reviewsReceived Review[]       @relation("Reviewee")
   disputes        Dispute[]
 }
 
 model Book {
-  id              String     @id @default(uuid())
-  title           String
-  author          String
-  isbn            String?
-  description     String?
-  condition       String?
-  status          BookStatus @default(AVAILABLE)
-  dailyRate       Decimal    @db.Decimal(10, 2)
-  securityDeposit Decimal    @db.Decimal(10, 2)
+  id          String     @id @default(uuid())
+  title       String
+  author      String
+  isbn        String?
+  description String?
+  condition   String?
+  status      BookStatus @default(AVAILABLE)
+
+  dailyRate       Decimal @db.Decimal(10, 2)
+  securityDeposit Decimal @db.Decimal(10, 2)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -99,7 +100,7 @@ model Book {
   owner   User   @relation("BookOwner", fields: [ownerId], references: [id])
 
   rentals Rental[]
-  reviews  Review[]
+  reviews Review[]
 
   @@index([ownerId])
   @@index([status])
@@ -140,7 +141,7 @@ model Rental {
   conditionRecords ConditionRecord[]
   payments         Payment[]
   disputes         Dispute[]
-  review           Review?
+  reviews          Review[]
 
   @@index([bookId])
   @@index([renterId])
@@ -152,11 +153,11 @@ model Rental {
 }
 
 model ConditionRecord {
-  id        String         @id @default(uuid())
+  id        String          @id @default(uuid())
   status    ConditionStatus
   notes     String?
-  imageUrls String[]       @default([])
-  createdAt DateTime       @default(now())
+  imageUrls String[]        @default([])
+  createdAt DateTime        @default(now())
 
   rentalId String
   rental   Rental @relation(fields: [rentalId], references: [id], onDelete: Cascade)
@@ -168,8 +169,8 @@ model Payment {
   id String @id @default(uuid())
 
   type     PaymentType
-  amount   Decimal @db.Decimal(10, 2)
-  currency String  @default("LKR")
+  amount   Decimal     @db.Decimal(10, 2)
+  currency String      @default("LKR")
 
   status PaymentStatus @default(PENDING)
 
@@ -207,7 +208,7 @@ model Dispute {
   rental   Rental @relation(fields: [rentalId], references: [id], onDelete: Cascade)
 
   raisedById String
-  raisedBy   User @relation(fields: [raisedById], references: [id])
+  raisedBy   User   @relation(fields: [raisedById], references: [id])
 
   @@index([rentalId])
   @@index([raisedById])
@@ -227,13 +228,13 @@ model Review {
   rental   Rental @relation(fields: [rentalId], references: [id], onDelete: Cascade)
 
   reviewerId String
-  reviewer   User @relation("Reviewer", fields: [reviewerId], references: [id])
+  reviewer   User   @relation("Reviewer", fields: [reviewerId], references: [id])
 
   revieweeId String
-  reviewee   User @relation("Reviewee", fields: [revieweeId], references: [id])
+  reviewee   User   @relation("Reviewee", fields: [revieweeId], references: [id])
 
   bookId String
-  book   Book @relation(fields: [bookId], references: [id])
+  book   Book   @relation(fields: [bookId], references: [id])
 
   @@unique([rentalId, reviewerId])
   @@index([reviewerId])
@@ -248,7 +249,7 @@ model RefreshToken {
   createdAt DateTime @default(now())
 
   userId String
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
