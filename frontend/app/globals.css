@@ -1,26 +1,186 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --navy: #17273f;
+  --navy-2: #213a56;
+  --navy-3: #2c4c6e;
+
+  --offwhite: #fbf7ef;
+  --cream: #f0e6d2;
+  --cream-2: #e7dac0;
+  --border: #e3d8c0;
+
+  --ink: #1e2a38;
+  --ink-soft: #5b6673;
+  --ink-muted: #9aa3ae;
+
+  --gold: #b8862f;
+  --gold-soft: #f3e4c4;
+
+  --green: #3f7a57;
+  --green-soft: #e4efe7;
+
+  --amber: #c1791e;
+  --amber-soft: #fbebd6;
+
+  --red: #b14a3d;
+  --red-soft: #f6e4e0;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+* {
+  box-sizing: border-box;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  background: var(--offwhite);
+  color: var(--ink);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  color: var(--navy);
+  font-family: 'Fraunces', serif;
+  font-weight: 500;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ---------- BookLoop utility classes ---------- */
+
+.bl-container {
+  width: min(1180px, calc(100% - 32px));
+  margin: 0 auto;
+}
+
+.bl-card {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+}
+
+.bl-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 12px;
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 700;
+  transition:
+    background-color 160ms ease,
+    transform 160ms ease;
+}
+
+.bl-button:hover {
+  transform: translateY(-1px);
+}
+
+.bl-button-primary {
+  background: var(--navy);
+  color: white;
+}
+
+.bl-button-primary:hover {
+  background: var(--navy-2);
+}
+
+.bl-button-secondary {
+  background: var(--cream);
+  color: var(--navy);
+}
+
+.bl-button-secondary:hover {
+  background: var(--cream-2);
+}
+
+.bl-button-outline {
+  background: transparent;
+  color: var(--navy);
+  border: 1.5px solid var(--navy);
+}
+
+.bl-button-outline:hover {
+  background: rgba(23, 39, 63, 0.05);
+}
+
+/* ---------- Book cover styles ---------- */
+
+.book-cover {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  border-radius: 12px;
+  color: white;
+  background-size: cover;
+  background-position: center;
+}
+
+.book-cover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    transparent 25%,
+    rgba(0, 0, 0, 0.58)
+  );
+}
+
+.book-cover-content {
+  position: relative;
+  z-index: 1;
+}
+
+.cover-one {
+  background: linear-gradient(155deg, #2c4c6e, #17273f);
+}
+
+.cover-two {
+  background: linear-gradient(155deg, #b8862f, #8c6620);
+}
+
+.cover-three {
+  background: linear-gradient(155deg, #3f7a57, #294f3a);
+}
+
+.cover-four {
+  background: linear-gradient(155deg, #8b5e4a, #5b3a2c);
+}
+
+/* ---------- Responsive helpers ---------- */
+
+@media (max-width: 767px) {
+  .bl-container {
+    width: min(100% - 24px, 600px);
+  }
 }
