@@ -2,15 +2,50 @@
 
 import Link from 'next/link';
 import { ArrowLeft, BookOpen, Eye, EyeOff, Lock, Mail } from 'lucide-react';
-import { useState } from 'react';
+import { FormEvent, useState } from 'react';
+import { login } from '../../lib/auth';
+import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
+  const router = useRouter();
+
   const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    setError('');
+
+    if (!email.trim() || !password) {
+      setError('Please enter your email and password.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      await login(email.trim(), password);
+
+      router.push('/');
+      router.refresh();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Unable to sign in. Please try again.',
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <main className="min-h-screen bg-[var(--offwhite)]">
       <div className="grid min-h-screen lg:grid-cols-2">
-        {/* Brand panel */}
         <section className="hidden bg-[var(--navy)] p-10 text-white lg:flex lg:flex-col lg:justify-between">
           <Link href="/" className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--gold)]">
@@ -43,7 +78,6 @@ export default function LoginPage() {
           </p>
         </section>
 
-        {/* Login */}
         <section className="flex min-h-screen items-center justify-center px-6 py-10">
           <div className="w-full max-w-md">
             <Link
@@ -70,10 +104,13 @@ export default function LoginPage() {
               </p>
             </div>
 
-            <form
-              onSubmit={(event) => event.preventDefault()}
-              className="space-y-5"
-            >
+            {error && (
+              <div className="mb-5 rounded-xl border border-[var(--red-soft)] bg-[var(--red-soft)] px-4 py-3 text-sm font-medium text-[var(--red)]">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-5">
               <div>
                 <label
                   htmlFor="email"
@@ -91,7 +128,10 @@ export default function LoginPage() {
                   <input
                     id="email"
                     type="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
                     placeholder="you@example.com"
+                    autoComplete="email"
                     className="w-full rounded-xl border border-[var(--border)] bg-white py-3.5 pl-11 pr-4 text-sm outline-none transition focus:border-[var(--navy)]"
                   />
                 </div>
@@ -123,7 +163,10 @@ export default function LoginPage() {
                   <input
                     id="password"
                     type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
                     placeholder="Enter your password"
+                    autoComplete="current-password"
                     className="w-full rounded-xl border border-[var(--border)] bg-white py-3.5 pl-11 pr-12 text-sm outline-none transition focus:border-[var(--navy)]"
                   />
 
@@ -139,15 +182,19 @@ export default function LoginPage() {
               </div>
 
               <label className="flex items-center gap-2 text-sm text-[var(--ink-soft)]">
-                <input type="checkbox" className="h-4 w-4 accent-[var(--navy)]" />
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-[var(--navy)]"
+                />
                 Remember me
               </label>
 
               <button
                 type="submit"
-                className="w-full rounded-xl bg-[var(--navy)] py-3.5 text-sm font-bold text-white transition hover:bg-[var(--navy-2)]"
+                disabled={loading}
+                className="w-full rounded-xl bg-[var(--navy)] py-3.5 text-sm font-bold text-white transition hover:bg-[var(--navy-2)] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Sign in
+                {loading ? 'Signing in...' : 'Sign in'}
               </button>
             </form>
 
@@ -157,7 +204,10 @@ export default function LoginPage() {
               <div className="h-px flex-1 bg-[var(--border)]" />
             </div>
 
-            <button className="w-full rounded-xl border border-[var(--border)] bg-white py-3.5 text-sm font-bold text-[var(--navy)] transition hover:bg-[var(--cream)]">
+            <button
+              type="button"
+              className="w-full rounded-xl border border-[var(--border)] bg-white py-3.5 text-sm font-bold text-[var(--navy)] transition hover:bg-[var(--cream)]"
+            >
               Continue with Google
             </button>
 
