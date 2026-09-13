@@ -1,509 +1,516 @@
 'use client';
 
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
 import {
   ArrowRight,
-  BookOpen,
   CalendarDays,
-  ChevronRight,
   Clock3,
-  MapPin,
-  RotateCcw,
   Search,
-  ShieldCheck,
-  Star,
+  WalletCards,
 } from 'lucide-react';
 
-type RentalStatus =
-  | 'ACTIVE'
-  |  'PENDING'
-  |  'COMPLETED'
-  | 'RETURN_PENDING';
+import { apiRequest } from '../../../lib/api';
+import { getAccessToken } from '../../../lib/auth';
 
 type Rental = {
   id: string;
-  title: string;
-  author: string;
-  category: string;
-  owner: string;
-  location: string;
-  startDate: string;
-  endDate: string;
-  duration: number;
-  rentalAmount: number;
-  securityDeposit: number;
-  status: RentalStatus;
-  rating?: number;
-  cover: string;
+  status: string;
+  startDate?: string;
+  endDate?: string;
+  rentalAmount?: number;
+  securityDeposit?: number;
+  book?: {
+    id?: string;
+    title?: string;
+    author?: string;
+    coverImage?: string;
+    imageUrl?: string;
+  };
+  owner?: {
+    name?: string;
+  };
 };
 
-const rentals: Rental[] = [
-  {
-    id: 'rental-001',
-    title: 'The Psychology of Money',
-    author: 'Morgan Housel',
-    category: 'Self Development',
-    owner: 'Maya Fernando',
-    location: 'Moratuwa, Colombo',
-    startDate: '13 Sep 2026',
-    endDate: '20 Sep 2026',
-    duration: 7,
-    rentalAmount: 1050,
-    securityDeposit: 3000,
-    status: 'ACTIVE',
-    cover: 'cover-one',
-  },
-  {
-    id: 'rental-002',
-    title: 'Atomic Habits',
-    author: 'James Clear',
-    category: 'Self Development',
-    owner: 'Nethmi Perera',
-    location: 'Dehiwala, Colombo',
-    startDate: '18 Sep 2026',
-    endDate: '25 Sep 2026',
-    duration: 7,
-    rentalAmount: 980,
-    securityDeposit: 2500,
-    status: 'PENDING',
-    cover: 'cover-two',
-  },
-  {
-    id: 'rental-003',
-    title: 'Deep Work',
-    author: 'Cal Newport',
-    category: 'Productivity',
-    owner: 'Ravindu Silva',
-    location: 'Kaduwela, Colombo',
-    startDate: '01 Aug 2026',
-    endDate: '15 Aug 2026',
-    duration: 14,
-    rentalAmount: 2100,
-    securityDeposit: 3500,
-    status: 'COMPLETED',
-    rating: 5,
-    cover: 'cover-three',
-  },
-  {
-    id: 'rental-004',
-    title: 'The Alchemist',
-    author: 'Paulo Coelho',
-    category: 'Fiction',
-    owner: 'Dinuka Jayasinghe',
-    location: 'Nugegoda, Colombo',
-    startDate: '03 Sep 2026',
-    endDate: '10 Sep 2026',
-    duration: 7,
-    rentalAmount: 840,
-    securityDeposit: 2000,
-    status: 'RETURN_PENDING',
-    cover: 'cover-four',
-  },
-];
+type RentalsResponse = {
+  success?: boolean;
+  message?: string;
+  rentals?: Rental[];
+  data?: Rental[] | { rentals?: Rental[]; items?: Rental[] };
+};
 
-const tabs = [
-  { value: 'ALL', label: 'All' },
-  { value: 'ACTIVE', label: 'Active' },
-  { value: 'PENDING', label: 'Pending' },
-  { value: 'COMPLETED', label: 'Completed' },
-];
+type Tab = 'ALL' | 'ACTIVE' | 'PENDING' | 'COMPLETED';
+
+function extractRentals(response: RentalsResponse): Rental[] {
+  if (Array.isArray(response.rentals)) {
+    return response.rentals;
+  }
+
+  if (Array.isArray(response.data)) {
+    return response.data;
+  }
+
+  if (response.data?.rentals) {
+    return response.data.rentals;
+  }
+
+  if (response.data?.items) {
+    return response.data.items;
+  }
+
+  return [];
+}
+
+function formatDate(date?: string) {
+  if (!date) return '—';
+
+  return new Date(date).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+function normaliseStatus(status: string) {
+  return status.toUpperCase().replace(/-/g, '_');
+}
+
+function statusLabel(status: string) {
+  return normaliseStatus(status)
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function statusClass(status: string) {
+  const value = normaliseStatus(status);
+
+  if (
+    ['ACTIVE', 'CONFIRMED', 'HANDOVER_PENDING'].includes(value)
+  ) {
+    return 'bg-[var(--green-soft)] text-[var(--green)]';
+  }
+
+  if (
+    ['REQUESTED', 'APPROVED', 'PAYMENT_PENDING'].includes(value)
+  ) {
+    return 'bg-[var(--amber-soft)] text-[var(--amber)]';
+  }
+
+  if (['COMPLETED'].includes(value)) {
+    return 'bg-[var(--cream)] text-[var(--navy)]';
+  }
+
+  if (
+    ['RETURN_PENDING', 'INSPECTION', 'OVERDUE', 'DISPUTED'].includes(
+      value,
+    )
+  ) {
+    return 'bg-[var(--red-soft)] text-[var(--red)]';
+  }
+
+  return 'bg-[var(--cream)] text-[var(--ink-soft)]';
+}
+
+function matchesTab(rental: Rental, tab: Tab) {
+  const status = normaliseStatus(rental.status);
+
+  if (tab === 'ALL') return true;
+
+  if (tab === 'ACTIVE') {
+    return [
+      'CONFIRMED',
+      'HANDOVER_PENDING',
+      'ACTIVE',
+      'RETURN_PENDING',
+      'INSPECTION',
+      'OVERDUE',
+      'DISPUTED',
+    ].includes(status);
+  }
+
+  if (tab === 'PENDING') {
+    return [
+      'REQUESTED',
+      'APPROVED',
+      'PAYMENT_PENDING',
+    ].includes(status);
+  }
+
+  if (tab === 'COMPLETED') {
+    return ['COMPLETED'].includes(status);
+  }
+
+  return true;
+}
 
 export default function RentalsClient() {
-  const [activeTab, setActiveTab] = useState('ALL');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [rentals, setRentals] = useState<Rental[]>([]);
+  const [activeTab, setActiveTab] = useState<Tab>('ALL');
+  const [search, setSearch] = useState('');
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadRentals() {
+      if (!getAccessToken()) {
+        setError('Please sign in to view your rentals.');
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError('');
+
+        const response = await apiRequest<RentalsResponse>(
+          '/rentals',
+          {
+            auth: true,
+          },
+        );
+
+        if (!mounted) return;
+
+        setRentals(extractRentals(response));
+      } catch (requestError) {
+        if (!mounted) return;
+
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : 'Unable to load your rentals.',
+        );
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadRentals();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const filteredRentals = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
     return rentals.filter((rental) => {
-      const matchesTab =
-        activeTab === 'ALL' || rental.status === activeTab;
+      const matchesStatus = matchesTab(rental, activeTab);
 
-      const search = searchQuery.toLowerCase().trim();
+      const searchableText = [
+        rental.book?.title,
+        rental.book?.author,
+        rental.owner?.name,
+        rental.status,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
 
-      const matchesSearch =
-        !search ||
-        rental.title.toLowerCase().includes(search) ||
-        rental.author.toLowerCase().includes(search) ||
-        rental.owner.toLowerCase().includes(search);
-
-      return matchesTab && matchesSearch;
+      return (
+        matchesStatus &&
+        (!query || searchableText.includes(query))
+      );
     });
-  }, [activeTab, searchQuery]);
+  }, [rentals, activeTab, search]);
 
-  const activeCount = rentals.filter(
-    (rental) => rental.status === 'ACTIVE',
+  const activeCount = rentals.filter((rental) =>
+    matchesTab(rental, 'ACTIVE'),
   ).length;
 
-  const pendingCount = rentals.filter(
-    (rental) => rental.status === 'PENDING',
+  const pendingCount = rentals.filter((rental) =>
+    matchesTab(rental, 'PENDING'),
   ).length;
 
-  const completedCount = rentals.filter(
-    (rental) => rental.status === 'COMPLETED',
+  const completedCount = rentals.filter((rental) =>
+    matchesTab(rental, 'COMPLETED'),
   ).length;
+
+  if (loading) {
+    return (
+      <main className="min-h-[calc(100vh-72px)] px-4 py-10">
+        <div className="bl-container">
+          <div className="animate-pulse">
+            <div className="h-10 w-64 rounded bg-[var(--cream)]" />
+            <div className="mt-3 h-5 w-80 rounded bg-[var(--cream)]" />
+
+            <div className="mt-8 grid gap-4 sm:grid-cols-3">
+              {[1, 2, 3].map((item) => (
+                <div
+                  key={item}
+                  className="h-28 rounded-2xl bg-[var(--cream)]"
+                />
+              ))}
+            </div>
+
+            <div className="mt-6 h-96 rounded-2xl bg-[var(--cream)]" />
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
-    <main className="min-h-screen bg-[#fbf7ef]">
-      <div className="bl-container py-7 pb-24 md:py-10">
-        {/* Heading */}
-        <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#b8862f]">
-              Your reading journey
-            </p>
+    <main className="min-h-[calc(100vh-72px)] pb-12">
+      <div className="bl-container pt-6 sm:pt-10">
+        <div className="mb-7">
+          <p className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-[var(--gold)]">
+            Your reading journey
+          </p>
 
-            <h1 className="mt-2 text-3xl md:text-4xl">My rentals</h1>
+          <h1 className="text-4xl sm:text-5xl">My Rentals</h1>
 
-            <p className="mt-2 max-w-xl text-sm leading-6 text-[#5b6673]">
-              Keep track of the books you are borrowing, returning and
-              discovering through BookLoop.
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--ink-soft)] sm:text-base">
+            Keep track of your current books, rental requests and
+            completed reads.
+          </p>
+        </div>
+
+        {error && (
+          <div className="mb-6 rounded-2xl border border-[var(--red)]/20 bg-[var(--red-soft)] px-5 py-4 text-sm font-semibold text-[var(--red)]">
+            {error}
+          </div>
+        )}
+
+        <div className="mb-7 grid gap-4 sm:grid-cols-3">
+          <div className="bl-card p-5">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold uppercase tracking-wide text-[var(--ink-soft)]">
+                Active
+              </p>
+
+              <Clock3 size={18} className="text-[var(--green)]" />
+            </div>
+
+            <p className="mt-3 font-serif text-3xl text-[var(--navy)]">
+              {activeCount}
             </p>
           </div>
 
-          <Link
-            href="/explore"
-            className="bl-button bl-button-primary w-full md:w-auto"
-          >
-            Find another book
-            <ArrowRight size={16} />
-          </Link>
+          <div className="bl-card p-5">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold uppercase tracking-wide text-[var(--ink-soft)]">
+                Pending
+              </p>
+
+              <WalletCards size={18} className="text-[var(--amber)]" />
+            </div>
+
+            <p className="mt-3 font-serif text-3xl text-[var(--navy)]">
+              {pendingCount}
+            </p>
+          </div>
+
+          <div className="bl-card p-5">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold uppercase tracking-wide text-[var(--ink-soft)]">
+                Completed
+              </p>
+
+              <CalendarDays
+                size={18}
+                className="text-[var(--navy)]"
+              />
+            </div>
+
+            <p className="mt-3 font-serif text-3xl text-[var(--navy)]">
+              {completedCount}
+            </p>
+          </div>
         </div>
 
-        {/* KPI cards */}
-        <div className="mt-7 grid grid-cols-2 gap-3 md:grid-cols-4">
-          <StatCard
-            label="Total rentals"
-            value={rentals.length}
-            icon={<BookOpen size={18} />}
-          />
+        <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex overflow-x-auto rounded-xl bg-[var(--cream)] p-1">
+            {(
+              [
+                ['ALL', 'All'],
+                ['ACTIVE', 'Active'],
+                ['PENDING', 'Pending'],
+                ['COMPLETED', 'Completed'],
+              ] as [Tab, string][]
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setActiveTab(value)}
+                className={`whitespace-nowrap rounded-lg px-4 py-2.5 text-xs font-bold transition ${
+                  activeTab === value
+                    ? 'bg-white text-[var(--navy)] shadow-sm'
+                    : 'text-[var(--ink-soft)]'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
 
-          <StatCard
-            label="Active"
-            value={activeCount}
-            icon={<Clock3 size={18} />}
-          />
-
-          <StatCard
-            label="Pending"
-            value={pendingCount}
-            icon={<CalendarDays size={18} />}
-          />
-
-          <StatCard
-            label="Completed"
-            value={completedCount}
-            icon={<Star size={18} />}
-          />
-        </div>
-
-        {/* Search + tabs */}
-        <div className="mt-8">
-          <div className="relative max-w-md">
+          <div className="relative lg:w-72">
             <Search
-              size={18}
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-[#9aa3ae]"
+              size={17}
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--ink-muted)]"
             />
 
             <input
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
               placeholder="Search your rentals..."
-              className="w-full rounded-xl border border-[#e3d8c0] bg-white py-3 pl-11 pr-4 text-sm outline-none transition placeholder:text-[#9aa3ae] focus:border-[#2c4c6e] focus:ring-2 focus:ring-[#2c4c6e]/10"
+              className="w-full rounded-xl border border-[var(--border)] bg-white py-3 pl-11 pr-4 text-sm outline-none focus:border-[var(--navy)]"
             />
           </div>
+        </div>
 
-          <div className="mt-5 flex gap-2 overflow-x-auto pb-1">
-            {tabs.map((tab) => {
-              const selected = activeTab === tab.value;
+        {filteredRentals.length === 0 ? (
+          <div className="bl-card px-6 py-16 text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[var(--cream)]">
+              <WalletCards
+                size={24}
+                className="text-[var(--navy)]"
+              />
+            </div>
+
+            <h2 className="mt-5 text-2xl">No rentals found</h2>
+
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[var(--ink-soft)]">
+              {search
+                ? 'Try a different search term.'
+                : 'Explore the catalogue and request your first book.'}
+            </p>
+
+            {!search && (
+              <Link
+                href="/explore"
+                className="bl-button bl-button-primary mt-6"
+              >
+                Explore books
+              </Link>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {filteredRentals.map((rental) => {
+              const bookTitle =
+                rental.book?.title || 'Untitled book';
+
+              const bookAuthor =
+                rental.book?.author || 'Unknown author';
+
+              const isReturnAction =
+                ['ACTIVE', 'RETURN_PENDING', 'OVERDUE'].includes(
+                  normaliseStatus(rental.status),
+                );
 
               return (
-                <button
-                  key={tab.value}
-                  type="button"
-                  onClick={() => setActiveTab(tab.value)}
-                  className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold transition ${
-                    selected
-                      ? 'bg-[#17273f] text-white'
-                      : 'border border-[#e3d8c0] bg-white text-[#5b6673] hover:border-[#b8862f]'
-                  }`}
+                <div
+                  key={rental.id}
+                  className="bl-card overflow-hidden p-4 sm:p-5"
                 >
-                  {tab.label}
-                </button>
+                  <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+                    <div className="book-cover cover-one h-32 w-24 shrink-0">
+                      <div className="book-cover-content p-2">
+                        <p className="text-[9px] font-bold uppercase tracking-wide">
+                          BookLoop
+                        </p>
+
+                        <p className="mt-1 text-xs font-semibold leading-tight">
+                          {bookTitle}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-2xl">{bookTitle}</h2>
+
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${statusClass(
+                            rental.status,
+                          )}`}
+                        >
+                          {statusLabel(rental.status)}
+                        </span>
+                      </div>
+
+                      <p className="mt-1 text-sm text-[var(--ink-soft)]">
+                        {bookAuthor}
+                      </p>
+
+                      <div className="mt-4 grid gap-3 text-xs sm:grid-cols-3">
+                        <div>
+                          <p className="font-bold uppercase tracking-wide text-[var(--ink-muted)]">
+                            Rental period
+                          </p>
+                          <p className="mt-1 font-semibold text-[var(--navy)]">
+                            {formatDate(rental.startDate)} —{' '}
+                            {formatDate(rental.endDate)}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="font-bold uppercase tracking-wide text-[var(--ink-muted)]">
+                            Rental amount
+                          </p>
+                          <p className="mt-1 font-semibold text-[var(--navy)]">
+                            LKR{' '}
+                            {Number(
+                              rental.rentalAmount || 0,
+                            ).toLocaleString()}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="font-bold uppercase tracking-wide text-[var(--ink-muted)]">
+                            Security deposit
+                          </p>
+                          <p className="mt-1 font-semibold text-[var(--navy)]">
+                            LKR{' '}
+                            {Number(
+                              rental.securityDeposit || 0,
+                            ).toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+
+                      {rental.owner?.name && (
+                        <p className="mt-3 text-xs text-[var(--ink-soft)]">
+                          Owner: {rental.owner.name}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex shrink-0 flex-col gap-2 sm:w-36">
+                      {isReturnAction && (
+                        <Link
+                          href={`/rentals/${rental.id}/return`}
+                          className="bl-button bl-button-primary w-full"
+                        >
+                          Return book
+                        </Link>
+                      )}
+
+                      {rental.book?.id && (
+                        <Link
+                          href={`/book/${rental.book.id}`}
+                          className="bl-button bl-button-outline w-full"
+                        >
+                          View book
+                          <ArrowRight size={15} />
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                </div>
               );
             })}
           </div>
-        </div>
-
-        {/* Rental list */}
-        <div className="mt-6">
-          {filteredRentals.length > 0 ? (
-            <div className="grid gap-4 lg:grid-cols-2">
-              {filteredRentals.map((rental) => (
-                <RentalCard key={rental.id} rental={rental} />
-              ))}
-            </div>
-          ) : (
-            <EmptyState searchQuery={searchQuery} />
-          )}
-        </div>
+        )}
       </div>
     </main>
-  );
-}
-
-function RentalCard({ rental }: { rental: Rental }) {
-  const canReturn =
-    rental.status === 'ACTIVE' || rental.status === 'RETURN_PENDING';
-
-  return (
-    <article className="bl-card overflow-hidden">
-      <div className="p-4 md:p-5">
-        {/* Top row */}
-        <div className="flex items-start justify-between gap-3">
-          <StatusBadge status={rental.status} />
-
-          <button
-            type="button"
-            className="flex h-9 w-9 items-center justify-center rounded-full text-[#5b6673] transition hover:bg-[#fbf7ef] hover:text-[#17273f]"
-            aria-label="View rental details"
-          >
-            <ChevronRight size={18} />
-          </button>
-        </div>
-
-        {/* Book */}
-        <div className="mt-4 flex gap-4">
-          <div className={`book-cover ${rental.cover} h-32 w-24 shrink-0`}>
-            <div className="book-cover-content p-2.5">
-              <p className="text-[8px] font-bold uppercase tracking-[0.12em]">
-                BookLoop
-              </p>
-
-              <p className="mt-1 text-sm font-semibold leading-tight">
-                {rental.title}
-              </p>
-            </div>
-          </div>
-
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-bold uppercase tracking-[0.1em] text-[#b8862f]">
-              {rental.category}
-            </p>
-
-            <h2 className="mt-1 line-clamp-2 text-xl leading-tight">
-              {rental.title}
-            </h2>
-
-            <p className="mt-1 text-sm text-[#5b6673]">
-              {rental.author}
-            </p>
-
-            <div className="mt-3 flex items-center gap-2 text-xs text-[#5b6673]">
-              <MapPin size={13} />
-              <span className="truncate">{rental.location}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Dates */}
-        <div className="mt-5 grid grid-cols-2 gap-2">
-          <InfoBox
-            label="Start date"
-            value={rental.startDate}
-            icon={<CalendarDays size={15} />}
-          />
-
-          <InfoBox
-            label="Return date"
-            value={rental.endDate}
-            icon={<Clock3 size={15} />}
-          />
-        </div>
-
-        {/* Owner + pricing */}
-        <div className="mt-4 flex flex-col gap-3 border-t border-[#e3d8c0] pt-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.08em] text-[#9aa3ae]">
-              Owner
-            </p>
-
-            <p className="mt-1 text-sm font-semibold text-[#17273f]">
-              {rental.owner}
-            </p>
-          </div>
-
-          <div className="sm:text-right">
-            <p className="text-[11px] uppercase tracking-[0.08em] text-[#9aa3ae]">
-              Rental amount
-            </p>
-
-            <p className="mt-1 text-lg font-bold text-[#17273f]">
-              Rs. {rental.rentalAmount.toLocaleString()}
-            </p>
-          </div>
-        </div>
-
-        {/* Action */}
-        <div className="mt-4 flex gap-2">
-          <button
-            type="button"
-            className="bl-button bl-button-secondary flex-1"
-          >
-            View details
-            <ChevronRight size={15} />
-          </button>
-
-          {canReturn && (
-            <Link
-              href={`/rentals/${rental.id}/return`}
-              className="bl-button bl-button-outline flex-1"
-            >
-              <RotateCcw size={15} />
-              Return book
-            </Link>
-          )}
-        </div>
-      </div>
-
-      {/* Deposit notice */}
-      {rental.status === 'ACTIVE' && (
-        <div className="flex items-center gap-2 border-t border-[#e3d8c0] bg-[#fbf7ef] px-5 py-3">
-          <ShieldCheck size={15} className="text-[#3f7a57]" />
-
-          <p className="text-[11px] leading-4 text-[#5b6673]">
-            Rs. {rental.securityDeposit.toLocaleString()} security deposit is
-            protected until return verification.
-          </p>
-        </div>
-      )}
-
-      {rental.status === 'COMPLETED' && rental.rating && (
-        <div className="flex items-center gap-2 border-t border-[#e3d8c0] bg-[#fbf7ef] px-5 py-3">
-          <Star size={15} className="fill-[#b8862f] text-[#b8862f]" />
-
-          <p className="text-[11px] text-[#5b6673]">
-            You rated this rental{' '}
-            <span className="font-bold text-[#17273f]">
-              {rental.rating}.0 / 5
-            </span>
-          </p>
-        </div>
-      )}
-    </article>
-  );
-}
-
-function StatusBadge({ status }: { status: RentalStatus }) {
-  const config: Record<
-    RentalStatus,
-    {
-      label: string;
-      className: string;
-    }
-  > = {
-    ACTIVE: {
-      label: 'Active rental',
-      className: 'bg-[#e4efe7] text-[#3f7a57]',
-    },
-    PENDING: {
-      label: 'Awaiting approval',
-      className: 'bg-[#fbebd6] text-[#c1791e]',
-    },
-    COMPLETED: {
-      label: 'Completed',
-      className: 'bg-[#f0e6d2] text-[#5b6673]',
-    },
-    RETURN_PENDING: {
-      label: 'Return pending',
-      className: 'bg-[#f3e4c4] text-[#8c6620]',
-    },
-  };
-
-  const item = config[status];
-
-  return (
-    <span
-      className={`inline-flex rounded-full px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-[0.08em] ${item.className}`}
-    >
-      {item.label}
-    </span>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  icon,
-}: {
-  label: string;
-  value: number;
-  icon: React.ReactNode;
-}) {
-  return (
-    <div className="bl-card p-4 md:p-5">
-      <div className="flex items-center justify-between gap-2">
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#f3e4c4] text-[#b8862f]">
-          {icon}
-        </span>
-
-        <span className="text-2xl font-bold text-[#17273f]">{value}</span>
-      </div>
-
-      <p className="mt-3 text-xs font-semibold text-[#5b6673]">{label}</p>
-    </div>
-  );
-}
-
-function InfoBox({
-  label,
-  value,
-  icon,
-}: {
-  label: string;
-  value: string;
-  icon: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-xl bg-[#fbf7ef] p-3">
-      <div className="flex items-center gap-1.5 text-[#9aa3ae]">
-        {icon}
-
-        <span className="text-[10px] font-bold uppercase tracking-[0.06em]">
-          {label}
-        </span>
-      </div>
-
-      <p className="mt-1 text-xs font-bold text-[#17273f]">{value}</p>
-    </div>
-  );
-}
-
-function EmptyState({ searchQuery }: { searchQuery: string }) {
-  return (
-    <div className="bl-card px-6 py-14 text-center">
-      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f0e6d2] text-[#b8862f]">
-        <BookOpen size={25} />
-      </div>
-
-      <h2 className="mt-5 text-2xl">
-        {searchQuery ? 'No matching rentals' : 'No rentals here yet'}
-      </h2>
-
-      <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[#5b6673]">
-        {searchQuery
-          ? 'Try a different title, author or owner name.'
-          : 'Explore the BookLoop catalogue and find something worth reading.'}
-      </p>
-
-      {!searchQuery && (
-        <Link
-          href="/explore"
-          className="bl-button bl-button-primary mt-6"
-        >
-          Explore books
-          <ArrowRight size={16} />
-        </Link>
-      )}
-    </div>
   );
 }
