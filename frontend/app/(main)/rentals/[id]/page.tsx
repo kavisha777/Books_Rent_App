@@ -1,5 +1,5 @@
-import ReturnBookClient from './ReturnBookClient';
+import RentalDetailsClient from './RentalDetailsClient';
 
-export default function ReturnBookPage() {
-  return <ReturnBookClient />;
+export default function RentalDetailsPage() {
+  return <RentalDetailsClient />;
 }

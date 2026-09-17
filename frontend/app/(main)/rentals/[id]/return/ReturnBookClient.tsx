@@ -247,7 +247,7 @@ export default function ReturnBookClient() {
       await apiRequest(
         `/rentals/${rentalId}/return`,
         {
-          method: 'POST',
+          method: 'PATCH',
           auth: true,
         },
       );

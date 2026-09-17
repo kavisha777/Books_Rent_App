@@ -1,6 +1,6 @@
 import { Router } from "express";
 import authMiddleware from "../middleware/auth.middleware.js";
-import { createRental, getMyRentals, getOwnerRentalRequests, getRentalById, approveRental, rejectRental, cancelRental, } from "../controllers/rental.controller.js";
+import { createRental, getMyRentals, getOwnerRentalRequests, getRentalById, approveRental, rejectRental, cancelRental, requestReturn, } from "../controllers/rental.controller.js";
 const router = Router();
 /*
  * All rental routes require authentication.
@@ -28,8 +28,9 @@ router.get("/:id", getRentalById);
 router.patch("/:id/approve", approveRental);
 router.patch("/:id/reject", rejectRental);
 /*
- * Renter action
+ * Renter actions
  */
 router.patch("/:id/cancel", cancelRental);
+router.patch("/:id/return", requestReturn);
 export default router;
 //# sourceMappingURL=rental.routes.js.map

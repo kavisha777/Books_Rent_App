@@ -10,6 +10,7 @@ import {
   approveRental,
   rejectRental,
   cancelRental,
+  requestReturn,
 } from "../controllers/rental.controller.js";
 
 const router = Router();
@@ -65,11 +66,16 @@ router.patch(
 );
 
 /*
- * Renter action
+ * Renter actions
  */
 router.patch(
   "/:id/cancel",
   cancelRental
+);
+
+router.patch(
+  "/:id/return",
+  requestReturn
 );
 
 export default router;
