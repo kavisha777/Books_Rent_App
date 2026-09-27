@@ -5,9 +5,11 @@ import Link from 'next/link';
 import {
   ArrowRight,
   CalendarDays,
+  Check,
   Clock3,
   Search,
   WalletCards,
+  X,
 } from 'lucide-react';
 
 import { apiRequest } from '../../../lib/api';
@@ -20,6 +22,7 @@ type Rental = {
   endDate?: string;
   rentalAmount?: number;
   securityDeposit?: number;
+
   book?: {
     id?: string;
     title?: string;
@@ -27,8 +30,16 @@ type Rental = {
     coverImage?: string;
     imageUrl?: string;
   };
+
   owner?: {
+    id?: string;
     name?: string;
+  };
+
+  renter?: {
+    id?: string;
+    name?: string;
+    email?: string;
   };
 };
 
@@ -40,6 +51,8 @@ type RentalsResponse = {
 };
 
 type Tab = 'ALL' | 'ACTIVE' | 'PENDING' | 'COMPLETED';
+
+type ViewMode = 'BORROWING' | 'LENDING';
 
 function extractRentals(response: RentalsResponse): Rental[] {
   if (Array.isArray(response.rentals)) {
@@ -97,7 +110,7 @@ function statusClass(status: string) {
     return 'bg-[var(--amber-soft)] text-[var(--amber)]';
   }
 
-  if (['COMPLETED'].includes(value)) {
+  if (value === 'COMPLETED') {
     return 'bg-[var(--cream)] text-[var(--navy)]';
   }
 
@@ -138,7 +151,7 @@ function matchesTab(rental: Rental, tab: Tab) {
   }
 
   if (tab === 'COMPLETED') {
-    return ['COMPLETED'].includes(status);
+    return status === 'COMPLETED';
   }
 
   return true;
@@ -146,57 +159,95 @@ function matchesTab(rental: Rental, tab: Tab) {
 
 export default function RentalsClient() {
   const [rentals, setRentals] = useState<Rental[]>([]);
+  const [viewMode, setViewMode] =
+    useState<ViewMode>('BORROWING');
+
   const [activeTab, setActiveTab] = useState<Tab>('ALL');
   const [search, setSearch] = useState('');
 
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState('');
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
-  useEffect(() => {
-    let mounted = true;
-
-    async function loadRentals() {
-      if (!getAccessToken()) {
-        setError('Please sign in to view your rentals.');
-        setLoading(false);
-        return;
-      }
-
-      try {
-        setLoading(true);
-        setError('');
-
-        const response = await apiRequest<RentalsResponse>(
-          '/rentals',
-          {
-            auth: true,
-          },
-        );
-
-        if (!mounted) return;
-
-        setRentals(extractRentals(response));
-      } catch (requestError) {
-        if (!mounted) return;
-
-        setError(
-          requestError instanceof Error
-            ? requestError.message
-            : 'Unable to load your rentals.',
-        );
-      } finally {
-        if (mounted) {
-          setLoading(false);
-        }
-      }
+  async function loadRentals(mode: ViewMode = viewMode) {
+    if (!getAccessToken()) {
+      setError('Please sign in to view your rentals.');
+      setLoading(false);
+      return;
     }
 
-    void loadRentals();
+    try {
+      setLoading(true);
+      setError('');
 
-    return () => {
-      mounted = false;
-    };
-  }, []);
+      const endpoint =
+        mode === 'BORROWING'
+          ? '/rentals/my'
+          : '/rentals/owner';
+
+      const response = await apiRequest<RentalsResponse>(
+        endpoint,
+        {
+          auth: true,
+        },
+      );
+
+      setRentals(extractRentals(response));
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'Unable to load rentals.',
+      );
+      setRentals([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadRentals(viewMode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode]);
+
+  async function performAction(
+    rentalId: string,
+    action: 'approve' | 'reject' | 'cancel',
+  ) {
+    const actionKey = `${action}-${rentalId}`;
+
+    try {
+      setActionLoading(actionKey);
+      setError('');
+      setSuccessMessage('');
+
+      const endpoint = `/rentals/${rentalId}/${action}`;
+
+      await apiRequest(endpoint, {
+        method: 'PATCH',
+        auth: true,
+      });
+
+      const messages = {
+        approve: 'Rental request approved.',
+        reject: 'Rental request rejected.',
+        cancel: 'Rental request cancelled.',
+      };
+
+      setSuccessMessage(messages[action]);
+
+      await loadRentals(viewMode);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : `Unable to ${action} this rental.`,
+      );
+    } finally {
+      setActionLoading('');
+    }
+  }
 
   const filteredRentals = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -208,6 +259,8 @@ export default function RentalsClient() {
         rental.book?.title,
         rental.book?.author,
         rental.owner?.name,
+        rental.renter?.name,
+        rental.renter?.email,
         rental.status,
       ]
         .filter(Boolean)
@@ -239,6 +292,7 @@ export default function RentalsClient() {
         <div className="bl-container">
           <div className="animate-pulse">
             <div className="h-10 w-64 rounded bg-[var(--cream)]" />
+
             <div className="mt-3 h-5 w-80 rounded bg-[var(--cream)]" />
 
             <div className="mt-8 grid gap-4 sm:grid-cols-3">
@@ -262,23 +316,70 @@ export default function RentalsClient() {
       <div className="bl-container pt-6 sm:pt-10">
         <div className="mb-7">
           <p className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-[var(--gold)]">
-            Your reading journey
+            Your BookLoop activity
           </p>
 
-          <h1 className="text-4xl sm:text-5xl">My Rentals</h1>
+          <h1 className="text-4xl sm:text-5xl">
+            My Rentals
+          </h1>
 
           <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--ink-soft)] sm:text-base">
-            Keep track of your current books, rental requests and
-            completed reads.
+            Manage the books you borrow and the books you lend.
           </p>
         </div>
 
+        {/* Borrowing / Lending switch */}
+        <div className="mb-6 grid grid-cols-2 rounded-2xl border border-[var(--border)] bg-white p-1.5 shadow-sm">
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode('BORROWING');
+              setActiveTab('ALL');
+              setSearch('');
+              setSuccessMessage('');
+              setError('');
+            }}
+            className={`rounded-xl px-4 py-3 text-sm font-bold transition ${
+              viewMode === 'BORROWING'
+                ? 'bg-[var(--navy)] text-white shadow-sm'
+                : 'text-[var(--ink-soft)] hover:bg-[var(--cream)]'
+            }`}
+          >
+            Books I'm borrowing
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode('LENDING');
+              setActiveTab('ALL');
+              setSearch('');
+              setSuccessMessage('');
+              setError('');
+            }}
+            className={`rounded-xl px-4 py-3 text-sm font-bold transition ${
+              viewMode === 'LENDING'
+                ? 'bg-[var(--navy)] text-white shadow-sm'
+                : 'text-[var(--ink-soft)] hover:bg-[var(--cream)]'
+            }`}
+          >
+            Books I'm lending
+          </button>
+        </div>
+
         {error && (
-          <div className="mb-6 rounded-2xl border border-[var(--red)]/20 bg-[var(--red-soft)] px-5 py-4 text-sm font-semibold text-[var(--red)]">
+          <div className="mb-4 rounded-2xl border border-[var(--red)]/20 bg-[var(--red-soft)] px-5 py-4 text-sm font-semibold text-[var(--red)]">
             {error}
           </div>
         )}
 
+        {successMessage && (
+          <div className="mb-4 rounded-2xl border border-[var(--green)]/20 bg-[var(--green-soft)] px-5 py-4 text-sm font-semibold text-[var(--green)]">
+            {successMessage}
+          </div>
+        )}
+
+        {/* KPI cards */}
         <div className="mb-7 grid gap-4 sm:grid-cols-3">
           <div className="bl-card p-5">
             <div className="flex items-center justify-between">
@@ -286,7 +387,10 @@ export default function RentalsClient() {
                 Active
               </p>
 
-              <Clock3 size={18} className="text-[var(--green)]" />
+              <Clock3
+                size={18}
+                className="text-[var(--green)]"
+              />
             </div>
 
             <p className="mt-3 font-serif text-3xl text-[var(--navy)]">
@@ -300,7 +404,10 @@ export default function RentalsClient() {
                 Pending
               </p>
 
-              <WalletCards size={18} className="text-[var(--amber)]" />
+              <WalletCards
+                size={18}
+                className="text-[var(--amber)]"
+              />
             </div>
 
             <p className="mt-3 font-serif text-3xl text-[var(--navy)]">
@@ -326,6 +433,7 @@ export default function RentalsClient() {
           </div>
         </div>
 
+        {/* Filters */}
         <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex overflow-x-auto rounded-xl bg-[var(--cream)] p-1">
             {(
@@ -359,13 +467,16 @@ export default function RentalsClient() {
 
             <input
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search your rentals..."
+              onChange={(event) =>
+                setSearch(event.target.value)
+              }
+              placeholder="Search rentals..."
               className="w-full rounded-xl border border-[var(--border)] bg-white py-3 pl-11 pr-4 text-sm outline-none focus:border-[var(--navy)]"
             />
           </div>
         </div>
 
+        {/* Empty state */}
         {filteredRentals.length === 0 ? (
           <div className="bl-card px-6 py-16 text-center">
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[var(--cream)]">
@@ -375,20 +486,33 @@ export default function RentalsClient() {
               />
             </div>
 
-            <h2 className="mt-5 text-2xl">No rentals found</h2>
+            <h2 className="mt-5 text-2xl">
+              No rentals found
+            </h2>
 
             <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[var(--ink-soft)]">
               {search
                 ? 'Try a different search term.'
-                : 'Explore the catalogue and request your first book.'}
+                : viewMode === 'BORROWING'
+                  ? 'Explore the catalogue and request your first book.'
+                  : 'When someone requests one of your books, the request will appear here.'}
             </p>
 
-            {!search && (
+            {!search && viewMode === 'BORROWING' && (
               <Link
                 href="/explore"
                 className="bl-button bl-button-primary mt-6"
               >
                 Explore books
+              </Link>
+            )}
+
+            {!search && viewMode === 'LENDING' && (
+              <Link
+                href="/list-book"
+                className="bl-button bl-button-primary mt-6"
+              >
+                List a book
               </Link>
             )}
           </div>
@@ -401,17 +525,35 @@ export default function RentalsClient() {
               const bookAuthor =
                 rental.book?.author || 'Unknown author';
 
-              const isReturnAction =
-                ['ACTIVE', 'RETURN_PENDING', 'OVERDUE'].includes(
-                  normaliseStatus(rental.status),
-                );
+              const status = normaliseStatus(
+                rental.status,
+              );
+
+              const isReturnAction = [
+                'ACTIVE',
+                'OVERDUE',
+              ].includes(status);
+
+              const isRequested =
+                status === 'REQUESTED';
+
+              const isApproved =
+                status === 'APPROVED';
+
+              const isPendingPayment =
+                status === 'PAYMENT_PENDING';
+
+              const isActionRunning = actionLoading.includes(
+                rental.id,
+              );
 
               return (
                 <div
                   key={rental.id}
                   className="bl-card overflow-hidden p-4 sm:p-5"
                 >
-                  <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+                  <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
+                    {/* Book cover */}
                     <div className="book-cover cover-one h-32 w-24 shrink-0">
                       <div className="book-cover-content p-2">
                         <p className="text-[9px] font-bold uppercase tracking-wide">
@@ -424,9 +566,12 @@ export default function RentalsClient() {
                       </div>
                     </div>
 
+                    {/* Main information */}
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="text-2xl">{bookTitle}</h2>
+                        <h2 className="text-2xl">
+                          {bookTitle}
+                        </h2>
 
                         <span
                           className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${statusClass(
@@ -446,6 +591,7 @@ export default function RentalsClient() {
                           <p className="font-bold uppercase tracking-wide text-[var(--ink-muted)]">
                             Rental period
                           </p>
+
                           <p className="mt-1 font-semibold text-[var(--navy)]">
                             {formatDate(rental.startDate)} —{' '}
                             {formatDate(rental.endDate)}
@@ -456,6 +602,7 @@ export default function RentalsClient() {
                           <p className="font-bold uppercase tracking-wide text-[var(--ink-muted)]">
                             Rental amount
                           </p>
+
                           <p className="mt-1 font-semibold text-[var(--navy)]">
                             LKR{' '}
                             {Number(
@@ -468,6 +615,7 @@ export default function RentalsClient() {
                           <p className="font-bold uppercase tracking-wide text-[var(--ink-muted)]">
                             Security deposit
                           </p>
+
                           <p className="mt-1 font-semibold text-[var(--navy)]">
                             LKR{' '}
                             {Number(
@@ -477,30 +625,145 @@ export default function RentalsClient() {
                         </div>
                       </div>
 
-                      {rental.owner?.name && (
-                        <p className="mt-3 text-xs text-[var(--ink-soft)]">
-                          Owner: {rental.owner.name}
-                        </p>
-                      )}
+                      {viewMode === 'BORROWING' &&
+                        rental.owner?.name && (
+                          <p className="mt-3 text-xs text-[var(--ink-soft)]">
+                            Owner: {rental.owner.name}
+                          </p>
+                        )}
+
+                      {viewMode === 'LENDING' &&
+                        rental.renter?.name && (
+                          <p className="mt-3 text-xs text-[var(--ink-soft)]">
+                            Borrower: {rental.renter.name}
+                          </p>
+                        )}
+
+                      {viewMode === 'LENDING' &&
+                        rental.renter?.email && (
+                          <p className="mt-1 text-xs text-[var(--ink-soft)]">
+                            {rental.renter.email}
+                          </p>
+                        )}
                     </div>
 
-                    <div className="flex shrink-0 flex-col gap-2 sm:w-36">
-                      {isReturnAction && (
-                        <Link
-                          href={`/rentals/${rental.id}/return`}
-                          className="bl-button bl-button-primary w-full"
-                        >
-                          Return book
-                        </Link>
-                      )}
+                    {/* Actions */}
+                    <div className="flex shrink-0 flex-col gap-2 lg:w-44">
+                      {/* OWNER REQUEST ACTIONS */}
+                      {viewMode === 'LENDING' &&
+                        isRequested && (
+                          <>
+                            <button
+                              type="button"
+                              disabled={isActionRunning}
+                              onClick={() =>
+                                void performAction(
+                                  rental.id,
+                                  'approve',
+                                )
+                              }
+                              className="bl-button bl-button-primary w-full disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Check size={15} />
 
+                              {actionLoading ===
+                              `approve-${rental.id}`
+                                ? 'Approving...'
+                                : 'Approve'}
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={isActionRunning}
+                              onClick={() =>
+                                void performAction(
+                                  rental.id,
+                                  'reject',
+                                )
+                              }
+                              className="bl-button w-full border border-[var(--red)] bg-transparent text-[var(--red)] hover:bg-[var(--red-soft)] disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <X size={15} />
+
+                              {actionLoading ===
+                              `reject-${rental.id}`
+                                ? 'Rejecting...'
+                                : 'Reject'}
+                            </button>
+                          </>
+                        )}
+
+                      {/* PAYMENT STATE */}
+                      {viewMode === 'BORROWING' &&
+                        isApproved && (
+                          <Link
+                            href={`/rentals/${rental.id}`}
+                            className="bl-button bl-button-primary w-full"
+                          >
+                            Continue
+                            <ArrowRight size={15} />
+                          </Link>
+                        )}
+
+                      {viewMode === 'BORROWING' &&
+                        isPendingPayment && (
+                          <Link
+                            href={`/rentals/${rental.id}`}
+                            className="bl-button bl-button-primary w-full"
+                          >
+                            Complete payment
+                            <ArrowRight size={15} />
+                          </Link>
+                        )}
+
+                      {/* BORROWER RETURN */}
+                      {viewMode === 'BORROWING' &&
+                        isReturnAction && (
+                          <Link
+                            href={`/rentals/${rental.id}/return`}
+                            className="bl-button bl-button-primary w-full"
+                          >
+                            Return book
+                          </Link>
+                        )}
+
+                      {/* BORROWER CANCEL */}
+                      {viewMode === 'BORROWING' &&
+                        isRequested && (
+                          <button
+                            type="button"
+                            disabled={isActionRunning}
+                            onClick={() =>
+                              void performAction(
+                                rental.id,
+                                'cancel',
+                              )
+                            }
+                            className="bl-button w-full border border-[var(--border)] bg-white text-[var(--ink-soft)] hover:bg-[var(--cream)] disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {actionLoading ===
+                            `cancel-${rental.id}`
+                              ? 'Cancelling...'
+                              : 'Cancel request'}
+                          </button>
+                        )}
+
+                      {/* VIEW RENTAL */}
+                      <Link
+                        href={`/rentals/${rental.id}`}
+                        className="bl-button bl-button-outline w-full"
+                      >
+                        View rental
+                        <ArrowRight size={15} />
+                      </Link>
+
+                      {/* VIEW BOOK */}
                       {rental.book?.id && (
                         <Link
                           href={`/book/${rental.book.id}`}
-                          className="bl-button bl-button-outline w-full"
+                          className="bl-button w-full border border-[var(--border)] bg-white text-[var(--navy)] hover:bg-[var(--cream)]"
                         >
                           View book
-                          <ArrowRight size={15} />
                         </Link>
                       )}
                     </div>
