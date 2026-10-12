@@ -16,7 +16,10 @@ import {
 } from 'lucide-react';
 
 import { apiRequest } from '../../../../lib/api';
-import { getAccessToken } from '../../../../lib/auth';
+import {
+  getAccessToken,
+  getCurrentUser,
+} from '../../../../lib/auth';
 
 type Person = {
   id: string;
@@ -116,6 +119,8 @@ export default function RentalDetailsClient() {
   const router = useRouter();
 
   const rentalId = params.id;
+  const currentUser = getCurrentUser();
+const currentUserId = currentUser?.id;
 
   const [rental, setRental] = useState<Rental | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -194,68 +199,61 @@ export default function RentalDetailsClient() {
     void loadReviews();
   }, [rentalId]);
 
-  const submitReview = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  
+const submitReview = async (event: FormEvent<HTMLFormElement>) => {
+  event.preventDefault();
 
-    if (!rating) {
-      setReviewMessage('Please select a rating.');
-      return;
-    }
+  if (!rating) {
+    setReviewMessage('Please select a rating.');
+    return;
+  }
 
-    if (rental?.status !== 'COMPLETED') {
-      setReviewMessage(
-        'A review can only be submitted after the rental is completed.',
-      );
-      return;
-    }
+  if (rental?.status !== 'COMPLETED') {
+    setReviewMessage(
+      'A review can only be submitted after the rental is completed.',
+    );
+    return;
+  }
 
-    try {
-      setSubmittingReview(true);
-      setReviewMessage('');
+  try {
+    setSubmittingReview(true);
+    setReviewMessage('');
 
-      const response = await apiRequest<{
-        success?: boolean;
-        data?: {
-          review?: Review;
-        };
-      }>(`/rentals/${rentalId}/reviews`, {
-        method: 'POST',
+    await apiRequest<{
+      success?: boolean;
+      message?: string;
+    }>(`/rentals/${rentalId}/reviews`, {
+      method: 'POST',
+      auth: true,
+      body: JSON.stringify({
+        rating,
+        comment: comment.trim(),
+      }),
+    });
+
+    const refreshed = await apiRequest<ReviewsResponse>(
+      `/rentals/${rentalId}/reviews`,
+      {
+        method: 'GET',
         auth: true,
-        body: JSON.stringify({
-          rating,
-          comment: comment.trim(),
-        }),
-      });
+      },
+    );
 
-      const createdReview = response.data?.review;
+    setReviews(refreshed.data?.reviews ?? []);
+    setRating(0);
+    setComment('');
+    setReviewMessage('Review submitted successfully.');
+  } catch (err) {
+    setReviewMessage(
+      err instanceof Error
+        ? err.message
+        : 'Unable to submit your review.',
+    );
+  } finally {
+    setSubmittingReview(false);
+  }
+};
 
-      if (createdReview) {
-        setReviews((current) => [...current, createdReview]);
-      } else {
-        const refreshed = await apiRequest<ReviewsResponse>(
-          `/rentals/${rentalId}/reviews`,
-          {
-            method: 'GET',
-            auth: true,
-          },
-        );
-
-        setReviews(refreshed.data?.reviews ?? []);
-      }
-
-      setRating(0);
-      setComment('');
-      setReviewMessage('Review submitted successfully.');
-    } catch (err) {
-      setReviewMessage(
-        err instanceof Error
-          ? err.message
-          : 'Unable to submit your review.',
-      );
-    } finally {
-      setSubmittingReview(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -295,6 +293,22 @@ export default function RentalDetailsClient() {
       </main>
     );
   }
+const isRenter = currentUserId === rental.renter.id;
+const isOwner = currentUserId === rental.owner.id;
+
+const existingUserReview = reviews.find(
+  (review) => review.reviewer?.id === currentUserId,
+);
+
+const canReview =
+  rental.status === 'COMPLETED' &&
+  (isRenter || isOwner) &&
+  !existingUserReview;
+
+const revieweeName = isRenter
+  ? rental.owner.name
+  : rental.renter.name;
+
 
   const total =
     Number(rental.rentalAmount ?? 0) +
@@ -517,92 +531,104 @@ export default function RentalDetailsClient() {
                 </div>
               )}
 
-              {rental.status === 'COMPLETED' && (
-                <form
-                  onSubmit={submitReview}
-                  className="mt-7 border-t border-[var(--border)] pt-7"
-                >
-                  <h3 className="text-lg">
-                    Share your experience
-                  </h3>
+             
+{rental.status === 'COMPLETED' && existingUserReview && (
+  <div className="mt-6 rounded-2xl bg-[var(--green-soft)] p-4">
+    <div className="flex items-center gap-2 text-sm font-bold text-[var(--green)]">
+      <CheckCircle2 size={18} />
+      You have already reviewed this rental.
+    </div>
+  </div>
+)}
 
-                  <p className="mt-1 text-sm text-[var(--ink-soft)]">
-                    Leave a review for the other person involved
-                    in this completed rental.
-                  </p>
+{rental.status === 'COMPLETED' && !existingUserReview && !isRenter && !isOwner && (
+  <p className="mt-6 rounded-2xl bg-[var(--offwhite)] p-4 text-sm text-[var(--ink-soft)]">
+    Only the borrower and book owner can review this rental.
+  </p>
+)}
 
-                  <div className="mt-5">
-                    <p className="text-xs font-bold uppercase tracking-[0.1em] text-[var(--ink-muted)]">
-                      Rating
-                    </p>
+{canReview && (
+  <form
+    onSubmit={submitReview}
+    className="mt-7 border-t border-[var(--border)] pt-7"
+  >
+    <h3 className="text-lg">Review {revieweeName}</h3>
 
-                    <div className="mt-3 flex gap-2">
-                      {Array.from({ length: 5 }, (_, index) => {
-                        const value = index + 1;
+    <p className="mt-1 text-sm text-[var(--ink-soft)]">
+      Share your experience with the other person in this completed rental.
+    </p>
 
-                        return (
-                          <button
-                            key={value}
-                            type="button"
-                            onClick={() => setRating(value)}
-                            aria-label={`${value} star${
-                              value === 1 ? '' : 's'
-                            }`}
-                            className="rounded-lg p-1 text-[var(--gold)] transition hover:scale-105"
-                          >
-                            <Star
-                              size={27}
-                              fill={
-                                value <= rating
-                                  ? 'currentColor'
-                                  : 'none'
-                              }
-                            />
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+    <div className="mt-5">
+      <p className="text-xs font-bold uppercase tracking-[0.1em] text-[var(--ink-muted)]">
+        Rating
+      </p>
 
-                  <textarea
-                    value={comment}
-                    onChange={(event) =>
-                      setComment(event.target.value)
-                    }
-                    maxLength={1000}
-                    rows={4}
-                    placeholder="Write a short review…"
-                    className="mt-5 w-full resize-none rounded-2xl border border-[var(--border)] bg-white px-4 py-3 text-sm outline-none transition focus:border-[var(--navy)]"
-                  />
+      <div className="mt-3 flex gap-2">
+        {Array.from({ length: 5 }, (_, index) => {
+          const value = index + 1;
 
-                  {reviewMessage && (
-                    <p className="mt-3 text-sm font-semibold text-[var(--ink-soft)]">
-                      {reviewMessage}
-                    </p>
-                  )}
+          return (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setRating(value)}
+              aria-label={`${value} star${value === 1 ? '' : 's'}`}
+              aria-pressed={rating === value}
+              className="rounded-lg p-1 text-[var(--gold)] transition hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--navy)]"
+            >
+              <Star
+                size={27}
+                fill={value <= rating ? 'currentColor' : 'none'}
+              />
+            </button>
+          );
+        })}
+      </div>
+    </div>
 
-                  <button
-                    type="submit"
-                    disabled={submittingReview}
-                    className="bl-button bl-button-primary mt-4 w-full sm:w-auto disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {submittingReview ? (
-                      <>
-                        <Loader2
-                          size={17}
-                          className="animate-spin"
-                        />
-                        Submitting…
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 size={17} />
-                        Submit review
-                      </>
-                    )}
-                  </button>
-                </form>
-              )}
+    <textarea
+      value={comment}
+      onChange={(event) => setComment(event.target.value)}
+      maxLength={1000}
+      rows={4}
+      placeholder="Write a short review (optional)…"
+      aria-label="Review comment"
+      className="mt-5 w-full resize-none rounded-2xl border border-[var(--border)] bg-white px-4 py-3 text-sm outline-none transition focus:border-[var(--navy)]"
+    />
+
+    <p className="mt-1 text-right text-xs text-[var(--ink-muted)]">
+      {comment.length}/1000
+    </p>
+
+    {reviewMessage && (
+      <p
+        role="status"
+        className="mt-3 text-sm font-semibold text-[var(--ink-soft)]"
+      >
+        {reviewMessage}
+      </p>
+    )}
+
+    <button
+      type="submit"
+      disabled={submittingReview || rating === 0}
+      className="bl-button bl-button-primary mt-4 w-full sm:w-auto disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      {submittingReview ? (
+        <>
+          <Loader2 size={17} className="animate-spin" />
+          Submitting…
+        </>
+      ) : (
+        <>
+          <CheckCircle2 size={17} />
+          Submit review
+        </>
+      )}
+    </button>
+  </form>
+)}
+
             </section>
           </div>
 
