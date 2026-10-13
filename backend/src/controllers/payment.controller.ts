@@ -10,6 +10,7 @@ import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
 import {
   createMockRentalPayment,
 } from "../services/payment.service.js";
+import { emitNotification } from "../services/notification.service.js";
 
 export const payForRental = async (
   req: AuthenticatedRequest,
@@ -41,8 +42,14 @@ export const payForRental = async (
         select: {
           id: true,
           renterId: true,
+          ownerId: true,
           status: true,
           paymentStatus: true,
+          book: {
+            select: {
+              title: true,
+            },
+          },
         },
       });
 
@@ -81,6 +88,14 @@ export const payForRental = async (
       await createMockRentalPayment(
         rentalId
       );
+
+    await emitNotification([rental.ownerId], {
+      type: "PAYMENT",
+      title: "Rental paid",
+      message: `Payment and deposit for "${rental.book.title}" are confirmed. Arrange the handover.`,
+      href: `/rentals/${rentalId}`,
+      rentalId,
+    });
 
     res.status(200).json({
       success: true,

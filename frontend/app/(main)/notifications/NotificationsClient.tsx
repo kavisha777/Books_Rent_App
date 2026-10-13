@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -18,125 +18,155 @@ import {
   X,
 } from 'lucide-react';
 
+import { apiRequest } from '../../../lib/api';
+
 type NotificationType =
   | 'RENTAL_REQUEST'
   | 'APPROVED'
+  | 'REJECTED'
+  | 'CANCELLED'
   | 'PAYMENT'
+  | 'HANDOVER'
   | 'RETURN'
+  | 'COMPLETED'
+  | 'OVERDUE'
+  | 'LOST'
   | 'DISPUTE'
   | 'REVIEW';
 
 type NotificationItem = {
-  id: number;
+  id: string;
   type: NotificationType;
   title: string;
   message: string;
-  time: string;
-  unread: boolean;
-  action?: string;
-  href?: string;
+  href: string | null;
+  rentalId: string | null;
+  read: boolean;
+  createdAt: string;
 };
 
-const initialNotifications: NotificationItem[] = [
-  {
-    id: 1,
-    type: 'RENTAL_REQUEST',
-    title: 'New rental request',
-    message:
-      'Someone has requested to rent The Psychology of Money from your library.',
-    time: '10 min ago',
-    unread: true,
-    action: 'Review request',
-    href: '/rentals',
-  },
-  {
-    id: 2,
-    type: 'APPROVED',
-    title: 'Rental request approved',
-    message:
-      'Your request for Atomic Habits has been approved by the lender.',
-    time: '1 hour ago',
-    unread: true,
-    action: 'View rental',
-    href: '/rentals',
-  },
-  {
-    id: 3,
-    type: 'PAYMENT',
-    title: 'Payment required',
-    message:
-      'Complete the rental payment and security deposit to confirm your booking.',
-    time: '2 hours ago',
-    unread: true,
-    action: 'View rental',
-    href: '/rentals',
-  },
-  {
-    id: 4,
-    type: 'RETURN',
-    title: 'Return reminder',
-    message:
-      'The Psychology of Money is due for return in 2 days.',
-    time: 'Yesterday',
-    unread: false,
-    action: 'View rental',
-    href: '/rentals',
-  },
-  {
-    id: 5,
-    type: 'REVIEW',
-    title: 'Leave a review',
-    message:
-      'Your recent rental is complete. Share your experience with the lender.',
-    time: '2 days ago',
-    unread: false,
-    action: 'View completed rental',
-    href: '/rentals',
-  },
-  {
-    id: 6,
-    type: 'DISPUTE',
-    title: 'Condition review opened',
-    message:
-      'BookLoop is reviewing the condition report submitted for a recent rental.',
-    time: '4 days ago',
-    unread: false,
-    action: 'View details',
-    href: '/rentals',
-  },
-];
+type NotificationsResponse = {
+  data?: {
+    notifications?: NotificationItem[];
+    unreadCount?: number;
+  };
+  notifications?: NotificationItem[];
+};
+
+function extractNotifications(
+  response: NotificationsResponse,
+): NotificationItem[] {
+  if (Array.isArray(response.data?.notifications)) {
+    return response.data.notifications;
+  }
+
+  if (Array.isArray(response.notifications)) {
+    return response.notifications;
+  }
+
+  return [];
+}
+
+function timeAgo(iso: string) {
+  const then = new Date(iso).getTime();
+
+  if (Number.isNaN(then)) {
+    return '—';
+  }
+
+  const seconds = Math.max(0, Math.floor((Date.now() - then) / 1000));
+
+  if (seconds < 60) return 'Just now';
+
+  const minutes = Math.floor(seconds / 60);
+
+  if (minutes < 60) return `${minutes} min ago`;
+
+  const hours = Math.floor(minutes / 60);
+
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+
+  const days = Math.floor(hours / 24);
+
+  if (days < 7) return `${days} day${days === 1 ? '' : 's'} ago`;
+
+  return new Date(iso).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+  });
+}
 
 const typeMeta: Record<
   NotificationType,
   {
     icon: typeof Bell;
     label: string;
+    action?: string;
     className: string;
   }
 > = {
   RENTAL_REQUEST: {
     icon: UserCheck,
     label: 'Rental request',
+    action: 'Review request',
     className: 'bg-[var(--gold-soft)] text-[var(--gold)]',
   },
   APPROVED: {
     icon: Check,
     label: 'Approved',
+    action: 'Pay now',
     className: 'bg-[var(--green-soft)] text-[var(--green)]',
+  },
+  REJECTED: {
+    icon: X,
+    label: 'Rejected',
+    className: 'bg-[var(--red-soft)] text-[var(--red)]',
+  },
+  CANCELLED: {
+    icon: CircleAlert,
+    label: 'Cancelled',
+    className: 'bg-[var(--cream)] text-[var(--navy-3)]',
   },
   PAYMENT: {
     icon: CreditCard,
     label: 'Payment',
+    action: 'Arrange handover',
     className: 'bg-[var(--cream)] text-[var(--navy-3)]',
+  },
+  HANDOVER: {
+    icon: BookOpen,
+    label: 'Handover',
+    action: 'View rental',
+    className: 'bg-[var(--gold-soft)] text-[var(--gold)]',
   },
   RETURN: {
     icon: RotateCcw,
     label: 'Return',
+    action: 'Inspect book',
     className: 'bg-[var(--amber-soft)] text-[var(--amber)]',
+  },
+  COMPLETED: {
+    icon: CheckCheck,
+    label: 'Completed',
+    action: 'Leave a review',
+    className: 'bg-[var(--green-soft)] text-[var(--green)]',
+  },
+  OVERDUE: {
+    icon: Clock3,
+    label: 'Overdue',
+    action: 'View rental',
+    className: 'bg-[var(--amber-soft)] text-[var(--amber)]',
+  },
+  LOST: {
+    icon: ShieldAlert,
+    label: 'Lost',
+    action: 'View details',
+    className: 'bg-[var(--red-soft)] text-[var(--red)]',
   },
   DISPUTE: {
     icon: ShieldAlert,
     label: 'Dispute',
+    action: 'View details',
     className: 'bg-[var(--red-soft)] text-[var(--red)]',
   },
   REVIEW: {
@@ -147,34 +177,72 @@ const typeMeta: Record<
 };
 
 export default function NotificationsClient() {
-  const [notifications, setNotifications] =
-    useState<NotificationItem[]>(initialNotifications);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const unreadCount = useMemo(
-    () => notifications.filter((notification) => notification.unread).length,
-    [notifications],
-  );
+  function load() {
+    return apiRequest<NotificationsResponse>('/notifications', { auth: true })
+      .then((response) => {
+        setNotifications(extractNotifications(response));
+        setError(null);
+      })
+      .catch((requestError: unknown) => {
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : 'Could not load your notifications.',
+        );
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }
 
-  function markAsRead(id: number) {
+  useEffect(() => {
+    load();
+  }, []);
+
+  const unreadCount = notifications.filter(
+    (notification) => !notification.read,
+  ).length;
+
+  async function markAsRead(id: string) {
+    // Optimistic: the badge clears on click rather than after the round trip.
     setNotifications((current) =>
       current.map((notification) =>
         notification.id === id
-          ? { ...notification, unread: false }
+          ? { ...notification, read: true }
           : notification,
       ),
     );
+
+    try {
+      await apiRequest(`/notifications/${id}/read`, {
+        method: 'PATCH',
+        auth: true,
+      });
+    } catch {
+      void load();
+    }
   }
 
-  function markAllAsRead() {
+  async function markAllAsRead() {
     setNotifications((current) =>
-      current.map((notification) => ({
-        ...notification,
-        unread: false,
-      })),
+      current.map((notification) => ({ ...notification, read: true })),
     );
+
+    try {
+      await apiRequest('/notifications/read-all', {
+        method: 'PATCH',
+        auth: true,
+      });
+    } catch {
+      void load();
+    }
   }
 
-  function removeNotification(id: number) {
+  function removeNotification(id: string) {
     setNotifications((current) =>
       current.filter((notification) => notification.id !== id),
     );
@@ -240,7 +308,31 @@ export default function NotificationsClient() {
           </div>
         </div>
 
-        {notifications.length === 0 ? (
+        {error && (
+          <section className="bl-card mx-auto mb-6 max-w-xl p-5 text-center">
+            <p className="text-sm font-semibold text-[var(--red)]">{error}</p>
+
+            <button
+              type="button"
+              onClick={() => void load()}
+              className="mt-3 text-xs font-bold text-[var(--navy)] hover:underline"
+            >
+              Try again
+            </button>
+          </section>
+        )}
+
+        {loading ? (
+          <section className="bl-card mx-auto max-w-xl p-8 text-center sm:p-12">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[var(--cream)]">
+              <Clock3 className="h-7 w-7 animate-pulse text-[var(--navy-3)]" />
+            </div>
+
+            <p className="mt-5 text-sm text-[var(--ink-soft)]">
+              Loading your notifications...
+            </p>
+          </section>
+        ) : notifications.length === 0 ? (
           <section className="bl-card mx-auto max-w-xl p-8 text-center sm:p-12">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[var(--cream)]">
               <Bell className="h-7 w-7 text-[var(--navy-3)]" />
@@ -272,12 +364,12 @@ export default function NotificationsClient() {
                   <article
                     key={notification.id}
                     className={`bl-card relative overflow-hidden p-4 transition sm:p-5 ${
-                      notification.unread
+                      !notification.read
                         ? 'border-[var(--cream-2)] bg-white'
                         : 'bg-white'
                     }`}
                   >
-                    {notification.unread && (
+                    {!notification.read && (
                       <span className="absolute left-0 top-0 h-full w-1 bg-[var(--gold)]" />
                     )}
 
@@ -296,7 +388,7 @@ export default function NotificationsClient() {
                                 {notification.title}
                               </h3>
 
-                              {notification.unread && (
+                              {!notification.read && (
                                 <span className="h-2 w-2 rounded-full bg-[var(--gold)]" />
                               )}
                             </div>
@@ -308,9 +400,7 @@ export default function NotificationsClient() {
 
                           <button
                             type="button"
-                            onClick={() =>
-                              removeNotification(notification.id)
-                            }
+                            onClick={() => removeNotification(notification.id)}
                             aria-label={`Remove ${notification.title}`}
                             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--ink-muted)] transition hover:bg-[var(--offwhite)] hover:text-[var(--navy)]"
                           >
@@ -321,7 +411,7 @@ export default function NotificationsClient() {
                         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
                           <span className="flex items-center gap-1.5 text-[11px] text-[var(--ink-muted)]">
                             <Clock3 className="h-3.5 w-3.5" />
-                            {notification.time}
+                            {timeAgo(notification.createdAt)}
                           </span>
 
                           <span className="text-[11px] font-semibold text-[var(--ink-muted)]">
@@ -329,23 +419,23 @@ export default function NotificationsClient() {
                           </span>
 
                           <div className="flex w-full items-center gap-3 sm:ml-auto sm:w-auto">
-                            {notification.unread && (
+                            {!notification.read && (
                               <button
                                 type="button"
-                                onClick={() => markAsRead(notification.id)}
+                                onClick={() => void markAsRead(notification.id)}
                                 className="text-[11px] font-bold text-[var(--navy-3)] hover:underline"
                               >
                                 Mark as read
                               </button>
                             )}
 
-                            {notification.action && notification.href && (
+                            {meta.action && notification.href && (
                               <Link
                                 href={notification.href}
-                                onClick={() => markAsRead(notification.id)}
+                                onClick={() => void markAsRead(notification.id)}
                                 className="text-[11px] font-bold text-[var(--gold)] hover:underline"
                               >
-                                {notification.action}
+                                {meta.action}
                               </Link>
                             )}
                           </div>

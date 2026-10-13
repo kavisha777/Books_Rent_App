@@ -7,6 +7,7 @@ import prisma from "../lib/prisma.js";
 import AppError from "../utils/AppError.js";
 import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
 import { createDisputeSchema } from "../utils/dispute.validation.js";
+import { emitNotification } from "../services/notification.service.js";
 
 export const createDispute = async (
   req: AuthenticatedRequest,
@@ -117,26 +118,51 @@ export const createDispute = async (
       evidenceUrls,
     } = validatedData.data;
 
-    const dispute = await prisma.dispute.create({
-      data: {
-        reason,
-        description,
-        evidenceUrls: evidenceUrls || [],
-        rentalId,
-        raisedById: req.user.userId,
-      },
-    });
+    const userId = req.user.userId;
 
-    if (rental.status !== "DISPUTED") {
-      await prisma.rental.update({
-        where: {
-          id: rentalId,
-        },
+    // Disputing overwrites the rental status, so remember what to go back to
+    // once the dispute closes. An already-disputed rental keeps its stored value.
+    const previousRentalStatus =
+      rental.status === "DISPUTED" ? null : rental.status;
+
+    const dispute = await prisma.$transaction(async (tx) => {
+      const created = await tx.dispute.create({
         data: {
-          status: "DISPUTED",
+          reason,
+          description,
+          evidenceUrls: evidenceUrls || [],
+          rentalId,
+          raisedById: userId,
+          previousRentalStatus,
         },
       });
-    }
+
+      if (previousRentalStatus) {
+        await tx.rental.update({
+          where: {
+            id: rentalId,
+          },
+          data: {
+            status: "DISPUTED",
+          },
+        });
+      }
+
+      return created;
+    });
+
+    const otherParty =
+      rental.renterId === userId
+        ? rental.ownerId
+        : rental.renterId;
+
+    await emitNotification([otherParty], {
+      type: "DISPUTE",
+      title: "Dispute opened",
+      message: `A dispute was raised on your rental: ${reason}.`,
+      href: `/rentals/${rentalId}`,
+      rentalId,
+    });
 
     res.status(201).json({
       success: true,

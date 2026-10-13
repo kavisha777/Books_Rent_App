@@ -24,51 +24,69 @@ export const createMockRentalPayment = async (
     );
   }
 
-  const rentalPayment =
-    await prisma.payment.create({
-      data: {
-        type: "RENTAL",
-        amount: rental.rentalAmount,
-        currency: "LKR",
-        status: "PAID",
-        provider: "MOCK",
-        providerPaymentId:
-          `MOCK-RENTAL-${rental.id}`,
-        rentalId: rental.id,
-      },
-    });
+  const rentalPayment = await prisma.$transaction(
+    async (tx) => {
+      // Claim the rental first so two concurrent pay requests cannot both
+      // record a payment; the guard is part of the same transaction.
+      const claimed = await tx.rental.updateMany({
+        where: {
+          id: rental.id,
+          paymentStatus: {
+            not: "PAID",
+          },
+        },
+        data: {
+          paymentStatus: "PAID",
+          status: "CONFIRMED",
+          confirmedAt: new Date(),
+        },
+      });
 
-  const depositPayment =
-    await prisma.payment.create({
-      data: {
-        type: "SECURITY_DEPOSIT",
-        amount: rental.securityDeposit,
-        currency: "LKR",
-        status: "PAID",
-        provider: "MOCK",
-        providerPaymentId:
-          `MOCK-DEPOSIT-${rental.id}`,
-        rentalId: rental.id,
-      },
-    });
+      if (claimed.count === 0) {
+        throw new AppError(
+          "Payment has already been completed",
+          400
+        );
+      }
 
-  const updatedRental =
-    await prisma.rental.update({
-      where: {
-        id: rental.id,
-      },
-      data: {
-        paymentStatus: "PAID",
-        status: "CONFIRMED",
-        confirmedAt: new Date(),
-      },
-    });
+      const rent = await tx.payment.create({
+        data: {
+          type: "RENTAL",
+          amount: rental.rentalAmount,
+          currency: "LKR",
+          status: "PAID",
+          provider: "MOCK",
+          providerPaymentId:
+            `MOCK-RENTAL-${rental.id}`,
+          rentalId: rental.id,
+        },
+      });
 
-  return {
-    rental: updatedRental,
-    payments: [
-      rentalPayment,
-      depositPayment,
-    ],
-  };
+      const deposit = await tx.payment.create({
+        data: {
+          type: "SECURITY_DEPOSIT",
+          amount: rental.securityDeposit,
+          currency: "LKR",
+          status: "PAID",
+          provider: "MOCK",
+          providerPaymentId:
+            `MOCK-DEPOSIT-${rental.id}`,
+          rentalId: rental.id,
+        },
+      });
+
+      const updatedRental = await tx.rental.findUnique({
+        where: {
+          id: rental.id,
+        },
+      });
+
+      return {
+        rental: updatedRental,
+        payments: [rent, deposit],
+      };
+    }
+  );
+
+  return rentalPayment;
 };

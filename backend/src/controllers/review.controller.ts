@@ -7,6 +7,7 @@ import prisma from "../lib/prisma.js";
 import AppError from "../utils/AppError.js";
 import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
 import { createReviewSchema } from "../utils/review.validation.js";
+import { emitNotification } from "../services/notification.service.js";
 
 export const createReview = async (
   req: AuthenticatedRequest,
@@ -116,6 +117,26 @@ export const createReview = async (
         revieweeId,
         bookId: rental.bookId,
       },
+      include: {
+        reviewer: {
+          select: {
+            name: true,
+          },
+        },
+        book: {
+          select: {
+            title: true,
+          },
+        },
+      },
+    });
+
+    await emitNotification([revieweeId], {
+      type: "REVIEW",
+      title: "New review",
+      message: `${review.reviewer.name} rated you ${rating}/5 for "${review.book.title}".`,
+      href: `/rentals/${rentalId}`,
+      rentalId,
     });
 
     res.status(201).json({

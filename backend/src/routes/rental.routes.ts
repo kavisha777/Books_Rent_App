@@ -11,6 +11,11 @@ import {
   rejectRental,
   cancelRental,
   requestReturn,
+  markHandover,
+  startRental,
+  startInspection,
+  completeRental,
+  markLost,
 } from "../controllers/rental.controller.js";
 
 const router = Router();
@@ -76,6 +81,41 @@ router.patch(
 router.patch(
   "/:id/return",
   requestReturn
+);
+
+/*
+ * Handover and completion. Either party can confirm the physical
+ * handover, since both must be present for it.
+ */
+router.patch(
+  "/:id/handover",
+  markHandover
+);
+
+router.patch(
+  "/:id/start",
+  startRental
+);
+
+/*
+ * Owner confirms the returned copy and closes the rental.
+ */
+router.patch(
+  "/:id/inspect",
+  startInspection
+);
+
+router.patch(
+  "/:id/complete",
+  completeRental
+);
+
+/*
+ * Either party can report the copy lost while it is out.
+ */
+router.patch(
+  "/:id/lost",
+  markLost
 );
 
 export default router;

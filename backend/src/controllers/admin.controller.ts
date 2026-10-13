@@ -6,6 +6,7 @@ import type {
 import prisma from "../lib/prisma.js";
 import AppError from "../utils/AppError.js";
 import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
+import { emitNotification } from "../services/notification.service.js";
 
 export const getAdminStats = async (
   req: AuthenticatedRequest,
@@ -186,17 +187,84 @@ export const updateDisputeStatus = async (
       );
     }
 
-    const updatedDispute =
-      await prisma.dispute.update({
+    const isClosing =
+      status === "RESOLVED" || status === "REJECTED";
+
+    const updatedDispute = await prisma.$transaction(
+      async (tx) => {
+        const updated = await tx.dispute.update({
+          where: {
+            id: disputeId,
+          },
+          data: {
+            status,
+            resolution: resolution?.trim() || null,
+          },
+        });
+
+        if (!isClosing) {
+          return updated;
+        }
+
+        const stillOpen = await tx.dispute.count({
+          where: {
+            rentalId: dispute.rentalId,
+            status: {
+              in: ["OPEN", "UNDER_REVIEW"],
+            },
+          },
+        });
+
+        if (stillOpen > 0) {
+          return updated;
+        }
+
+        // Without a recorded prior status there is nothing safe to restore
+        // to, so leave the rental as it is rather than guessing.
+        if (!dispute.previousRentalStatus) {
+          return updated;
+        }
+
+        await tx.rental.update({
+          where: {
+            id: dispute.rentalId,
+          },
+          data: {
+            status: dispute.previousRentalStatus,
+          },
+        });
+
+        return updated;
+      }
+    );
+
+    if (isClosing) {
+      const rental = await prisma.rental.findUnique({
         where: {
-          id: disputeId,
+          id: dispute.rentalId,
         },
-        data: {
-          status,
-          resolution:
-            resolution?.trim() || null,
+        select: {
+          renterId: true,
+          ownerId: true,
+          status: true,
         },
       });
+
+      await emitNotification(
+        [rental?.renterId, rental?.ownerId],
+        {
+          type: "DISPUTE",
+          title: `Dispute ${status.toLowerCase()}`,
+          message: `An admin ${
+            status === "RESOLVED" ? "resolved" : "rejected"
+          } the dispute on your rental.${
+            resolution ? ` Resolution: ${resolution}` : ""
+          }`,
+          href: `/rentals/${dispute.rentalId}`,
+          rentalId: dispute.rentalId,
+        }
+      );
+    }
 
     res.status(200).json({
       success: true,

@@ -20,6 +20,9 @@ import {
   getAccessToken,
   getCurrentUser,
 } from '../../../../lib/auth';
+import RentalActionsPanel, {
+  type RentalDisputeSummary,
+} from './RentalActionsPanel';
 
 type Person = {
   id: string;
@@ -55,6 +58,7 @@ type Rental = {
   renter: Person;
   owner: Person;
   conditionRecords?: ConditionRecord[];
+  disputes?: RentalDisputeSummary[];
 };
 
 type Review = {
@@ -133,25 +137,12 @@ const currentUserId = currentUser?.id;
   const [submittingReview, setSubmittingReview] = useState(false);
   const [reviewMessage, setReviewMessage] = useState('');
 
-  useEffect(() => {
-    const loadRental = async () => {
-      if (!getAccessToken()) {
-        router.replace('/login');
-        return;
-      }
-
-      try {
-        setLoading(true);
-        setError('');
-
-        const response = await apiRequest<RentalResponse>(
-          `/rentals/${rentalId}`,
-          {
-            method: 'GET',
-            auth: true,
-          },
-        );
-
+  function loadRental() {
+    return apiRequest<RentalResponse>(`/rentals/${rentalId}`, {
+      method: 'GET',
+      auth: true,
+    })
+      .then((response) => {
         const nextRental = response.data?.rental;
 
         if (!nextRental) {
@@ -159,18 +150,28 @@ const currentUserId = currentUser?.id;
         }
 
         setRental(nextRental);
-      } catch (err) {
+        setError('');
+      })
+      .catch((requestError: unknown) => {
         setError(
-          err instanceof Error
-            ? err.message
+          requestError instanceof Error
+            ? requestError.message
             : 'Unable to load this rental.',
         );
-      } finally {
+      })
+      .finally(() => {
         setLoading(false);
-      }
-    };
+      });
+  }
 
-    void loadRental();
+  useEffect(() => {
+    if (!getAccessToken()) {
+      router.replace('/login');
+      return;
+    }
+
+    loadRental();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rentalId, router]);
 
   useEffect(() => {
@@ -255,6 +256,10 @@ const submitReview = async (event: FormEvent<HTMLFormElement>) => {
 };
 
 
+  const isRenter = Boolean(rental && currentUserId === rental.renter.id);
+  const isOwner = Boolean(rental && currentUserId === rental.owner.id);
+  const rentalRoles = { isRenter, isOwner };
+
   if (loading) {
     return (
       <main className="min-h-screen bg-[var(--offwhite)]">
@@ -293,9 +298,6 @@ const submitReview = async (event: FormEvent<HTMLFormElement>) => {
       </main>
     );
   }
-const isRenter = currentUserId === rental.renter.id;
-const isOwner = currentUserId === rental.owner.id;
-
 const existingUserReview = reviews.find(
   (review) => review.reviewer?.id === currentUserId,
 );
@@ -421,6 +423,15 @@ const revieweeName = isRenter
                 </div>
               </div>
             </section>
+
+            <RentalActionsPanel
+              rentalId={rental.id}
+              status={rental.status}
+              roles={rentalRoles}
+              payTotalLabel={money(total)}
+              disputes={rental.disputes}
+              onUpdated={loadRental}
+            />
 
             <section className="bl-card p-5 md:p-7">
               <div className="flex items-center gap-3">

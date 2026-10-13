@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -10,6 +11,9 @@ import {
   Plus,
   UserRound,
 } from 'lucide-react';
+
+import { apiRequest } from '../../../lib/api';
+import { getAccessToken } from '../../../lib/auth';
 
 const desktopLinks = [
   {
@@ -62,6 +66,34 @@ function isActive(pathname: string, href: string) {
 
 export default function MainNav() {
   const pathname = usePathname();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    // MainNav only renders inside the authenticated route group, so a missing
+    // token means this mount never has a badge to clear.
+    if (!getAccessToken()) {
+      return;
+    }
+
+    // Re-read whenever the route changes, so opening the centre clears the dot.
+    let cancelled = false;
+
+    apiRequest<{ data?: { unreadCount?: number } }>('/notifications?limit=1', {
+      auth: true,
+    })
+      .then((response) => {
+        if (!cancelled) {
+          setUnreadCount(response.data?.unreadCount ?? 0);
+        }
+      })
+      .catch(() => {
+        // The dot is decorative when unavailable; never block navigation.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
 
   return (
     <>
@@ -118,7 +150,11 @@ export default function MainNav() {
             >
               <Bell size={19} />
 
-              <span className="absolute right-2.5 top-2 h-1.5 w-1.5 rounded-full bg-[#b8862f]" />
+              {unreadCount > 0 && (
+                <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#b8862f] px-1 text-[9px] font-bold text-white">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
             </Link>
 
             <Link
@@ -189,7 +225,7 @@ export default function MainNav() {
                 <span className="relative">
                   <Icon size={19} strokeWidth={active ? 2.3 : 1.8} />
 
-                  {item.href === '/notifications' && (
+                  {item.href === '/notifications' && unreadCount > 0 && (
                     <span className="absolute -right-1 -top-0.5 h-1.5 w-1.5 rounded-full bg-[#b8862f]" />
                   )}
                 </span>

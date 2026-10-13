@@ -63,6 +63,21 @@ enum DisputeStatus {
   REJECTED
 }
 
+enum NotificationType {
+  RENTAL_REQUEST
+  APPROVED
+  REJECTED
+  CANCELLED
+  PAYMENT
+  HANDOVER
+  RETURN
+  COMPLETED
+  OVERDUE
+  LOST
+  DISPUTE
+  REVIEW
+}
+
 model User {
   id        String   @id @default(uuid())
   name      String
@@ -79,6 +94,7 @@ model User {
   reviewsGiven    Review[]       @relation("Reviewer")
   reviewsReceived Review[]       @relation("Reviewee")
   disputes        Dispute[]
+  notifications   Notification[]
 }
 
 model Book {
@@ -197,6 +213,10 @@ model Dispute {
 
   status DisputeStatus @default(OPEN)
 
+  // Rental status to restore once this dispute is resolved or rejected,
+  // since a dispute overwrites it with DISPUTED.
+  previousRentalStatus RentalStatus?
+
   evidenceUrls String[] @default([])
 
   resolution String?
@@ -253,4 +273,21 @@ model RefreshToken {
 
   @@index([userId])
   @@index([expiresAt])
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  type      NotificationType
+  title     String
+  message   String
+  href      String?
+  rentalId  String?
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([userId, createdAt])
 }
