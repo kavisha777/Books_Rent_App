@@ -26,11 +26,7 @@ const desktopLinks = [
     label: 'Explore',
     icon: Compass,
   },
-  {
-    href: '/rentals',
-    label: 'My Rentals',
-    icon: BookOpen,
-  },
+ 
 ];
 
 const mobileLinks = [
@@ -44,11 +40,7 @@ const mobileLinks = [
     label: 'Explore',
     icon: Compass,
   },
-  {
-    href: '/rentals',
-    label: 'Rentals',
-    icon: BookOpen,
-  },
+ 
   {
     href: '/notifications',
     label: 'Alerts',
@@ -169,13 +161,7 @@ export default function MainNav() {
               <UserRound size={18} />
             </Link>
 
-            <Link
-              href="/list-book"
-              className="ml-1 inline-flex items-center gap-2 rounded-xl bg-[#17273f] px-4 py-2.5 text-xs font-bold text-white transition hover:bg-[#213a56]"
-            >
-              <Plus size={16} />
-              List a Book
-            </Link>
+            
           </div>
         </div>
       </header>
