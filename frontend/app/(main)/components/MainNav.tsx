@@ -1,5 +1,8 @@
 'use client';
 
+import AuthModal from '../../(main)/components/AuthModal';
+import { isAuthenticated , getAccessToken} from '../../../lib/auth';
+import { apiRequest } from '@/lib/api';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -12,8 +15,6 @@ import {
   UserRound,
 } from 'lucide-react';
 
-import { apiRequest } from '../../../lib/api';
-import { getAccessToken } from '../../../lib/auth';
 
 const desktopLinks = [
   {
@@ -59,6 +60,14 @@ function isActive(pathname: string, href: string) {
 export default function MainNav() {
   const pathname = usePathname();
   const [unreadCount, setUnreadCount] = useState(0);
+
+  const [authOpen, setAuthOpen] = useState(false);
+const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+const [loggedIn, setLoggedIn] = useState(false);
+
+useEffect(() => {
+  setLoggedIn(isAuthenticated());
+}, []);
 
   useEffect(() => {
     // MainNav only renders inside the authenticated route group, so a missing
@@ -116,7 +125,7 @@ export default function MainNav() {
               return (
                 <Link
                   key={item.href}
-                  href={item.href}
+                  href={item.href} 
                   className={`flex items-center gap-1.5 text-sm font-semibold transition ${
                     active
                       ? 'text-[#17273f]'
@@ -149,17 +158,25 @@ export default function MainNav() {
               )}
             </Link>
 
-            <Link
-              href="/profile"
-              aria-label="Profile"
-              className={`flex h-10 w-10 items-center justify-center rounded-xl transition ${
-                isActive(pathname, '/profile')
-                  ? 'bg-[#17273f] text-white'
-                  : 'bg-[#f0e6d2] text-[#17273f] hover:bg-[#e7dac0]'
-              }`}
-            >
-              <UserRound size={18} />
-            </Link>
+  <button
+  type="button"
+  aria-label="Profile"
+  onClick={() => {
+    if (isAuthenticated()) {
+      window.location.href = '/profile';
+    } else {
+      setAuthMode('login');
+      setAuthOpen(true);
+    }
+  }}
+  className={`flex h-10 w-10 items-center justify-center rounded-xl transition ${
+    isActive(pathname, '/profile')
+      ? 'bg-[#17273f] text-white'
+      : 'bg-[#f0e6d2] text-[#17273f] hover:bg-[#e7dac0]'
+  }`}
+>
+  <UserRound size={18} />
+</button>
 
             
           </div>
@@ -196,32 +213,61 @@ export default function MainNav() {
             <Plus size={22} />
           </Link>
 
-          {mobileLinks.slice(2).map((item) => {
-            const Icon = item.icon;
-            const active = isActive(pathname, item.href);
+         {mobileLinks.slice(2).map((item) => {
+  const Icon = item.icon;
+  const active = isActive(pathname, item.href);
 
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex w-[68px] flex-col items-center gap-1 text-[9.5px] font-bold ${
-                  active ? 'text-[#17273f]' : 'text-[#9aa3ae]'
-                }`}
-              >
-                <span className="relative">
-                  <Icon size={19} strokeWidth={active ? 2.3 : 1.8} />
-
-                  {item.href === '/notifications' && unreadCount > 0 && (
-                    <span className="absolute -right-1 -top-0.5 h-1.5 w-1.5 rounded-full bg-[#b8862f]" />
-                  )}
-                </span>
-
-                {item.label}
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
-    </>
+  return (
+    <Link
+      key={item.href}
+      href={item.href}
+      className={`flex w-[68px] flex-col items-center gap-1 text-[9.5px] font-bold ${
+        active ? 'text-[#17273f]' : 'text-[#9aa3ae]'
+      }`}
+    >
+      <span className="relative">
+        <Icon size={19} strokeWidth={active ? 2.3 : 1.8} />
+        {item.href === '/notifications' && unreadCount > 0 && (
+          <span className="absolute -right-1 -top-0.5 h-1.5 w-1.5 rounded-full bg-[#b8862f]" />
+        )}
+      </span>
+      {item.label}
+    </Link>
   );
+})}
+
+<button
+  type="button"
+  aria-label="Profile"
+  onClick={() => {
+    if (isAuthenticated()) {
+      window.location.href = '/profile';
+    } else {
+      setAuthMode('login');
+      setAuthOpen(true);
+    }
+  }}
+  className="flex w-[68px] flex-col items-center gap-1 text-[9.5px] font-bold text-[#9aa3ae]"
+>
+  <UserRound size={19} />
+  Profile
+</button>
+        </div>
+         
+      </nav>
+      <AuthModal
+  open={authOpen}
+  initialMode={authMode}
+  onClose={() => setAuthOpen(false)}
+  onSuccess={() => {
+    setAuthOpen(false);
+    setLoggedIn(true);
+    window.location.reload();
+  }}
+/>
+    </>
+
+    
+  );
+ 
 }
