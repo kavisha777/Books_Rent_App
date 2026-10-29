@@ -1,6 +1,7 @@
 import prisma from "../lib/prisma.js";
 import AppError from "../utils/AppError.js";
 import { createMockRentalPayment, } from "../services/payment.service.js";
+import { emitNotification } from "../services/notification.service.js";
 export const payForRental = async (req, res, next) => {
     try {
         if (!req.user) {
@@ -17,8 +18,14 @@ export const payForRental = async (req, res, next) => {
             select: {
                 id: true,
                 renterId: true,
+                ownerId: true,
                 status: true,
                 paymentStatus: true,
+                book: {
+                    select: {
+                        title: true,
+                    },
+                },
             },
         });
         if (!rental) {
@@ -35,6 +42,13 @@ export const payForRental = async (req, res, next) => {
             throw new AppError("Rental has already been paid", 400);
         }
         const result = await createMockRentalPayment(rentalId);
+        await emitNotification([rental.ownerId], {
+            type: "PAYMENT",
+            title: "Rental paid",
+            message: `Payment and deposit for "${rental.book.title}" are confirmed. Arrange the handover.`,
+            href: `/rentals/${rentalId}`,
+            rentalId,
+        });
         res.status(200).json({
             success: true,
             message: "Rental payment and security deposit completed successfully",

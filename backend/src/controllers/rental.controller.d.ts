@@ -12,4 +12,5 @@ export declare const startRental: (req: AuthenticatedRequest, res: Response, nex
 export declare const requestReturn: (req: AuthenticatedRequest, res: Response, next: NextFunction) => Promise<void>;
 export declare const startInspection: (req: AuthenticatedRequest, res: Response, next: NextFunction) => Promise<void>;
 export declare const completeRental: (req: AuthenticatedRequest, res: Response, next: NextFunction) => Promise<void>;
+export declare const markLost: (req: AuthenticatedRequest, res: Response, next: NextFunction) => Promise<void>;
 //# sourceMappingURL=rental.controller.d.ts.map

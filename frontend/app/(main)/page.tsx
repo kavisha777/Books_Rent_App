@@ -1,4 +1,11 @@
+
+'use client';
+
+import { useState } from 'react';
+import AuthModal from './components/AuthModal';
+
 import Link from 'next/link';
+
 import {
   ArrowRight,
   BookOpen,
@@ -39,6 +46,13 @@ const books = [
 ];
 
 export default function MainHomePage() {
+    const [authOpen, setAuthOpen] = useState(false);
+const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+
+function openAuth(mode: 'login' | 'register') {
+  setAuthMode(mode);
+  setAuthOpen(true);
+}
   return (
     <main>
       {/* Hero */}
@@ -60,7 +74,23 @@ export default function MainHomePage() {
               Borrow books from readers around you, or give the books
               on your shelf another journey.
             </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+  <button
+    type="button"
+    onClick={() => openAuth('login')}
+    className="rounded-xl bg-[#17273f] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#213a56]"
+  >
+    Login
+  </button>
 
+  <button
+    type="button"
+    onClick={() => openAuth('register')}
+    className="rounded-xl border border-[#b8862f] bg-white px-5 py-3 text-sm font-bold text-[#17273f] transition hover:bg-[#f0e6d2]"
+  >
+    Create account
+  </button>
+</div>
             {/* Search */}
             <div className="mt-7 flex max-w-[590px] items-center gap-2 rounded-2xl border-[1.5px] border-[#e3d8c0] bg-white p-1.5 shadow-[0_12px_35px_-25px_rgba(23,39,63,0.4)]">
               <Search className="ml-2 text-[#9aa3ae]" size={19} />
@@ -73,7 +103,7 @@ export default function MainHomePage() {
 
               <Link
                 href="/explore"
-                className="rounded-xl bg-[#17273f] px-4 py-3 text-xs font-bold text-white transition hover:bg-[#213a56]"
+                className="rounded-xl bg-[#17273f] px-4 py-3 text-xs font-bold !text-white transition hover:bg-[#213a56]"
               >
                 Search
               </Link>
@@ -95,46 +125,36 @@ export default function MainHomePage() {
           </div>
 
           {/* Hero book visual */}
-          <div className="mx-auto w-full max-w-[410px]">
-            <div className="relative grid grid-cols-2 gap-3">
-              <div className="book-cover cover-one h-[220px] translate-y-5 p-4 sm:h-[260px]">
-                <div className="book-cover-content">
-                  <div className="text-[9px] font-bold uppercase tracking-widest opacity-70">
-                    Habit
-                  </div>
+      
 
-                  <div className="mt-1 font-serif text-xl font-semibold">
-                    Atomic Habits
-                  </div>
 
-                  <div className="mt-1 text-[10px] opacity-75">
-                    James Clear
-                  </div>
-                </div>
-              </div>
+{/* Hero book visual */}
+<div className="mx-auto w-full max-w-[410px]">
+  <div className="relative grid grid-cols-2 items-center gap-5">
+    <div className="flex h-[250px] translate-y-5 items-center justify-center overflow-hidden rounded-2xl bg-[#fbf7ef] p-4 sm:h-[300px]">
+      <img
+        src="https://covers.openlibrary.org/b/isbn/9780735211292-L.jpg"
+        alt="Atomic Habits by James Clear"
+        className="h-full w-full object-contain drop-shadow-lg"
+      />
+    </div>
 
-              <div className="book-cover cover-two h-[220px] p-4 sm:h-[260px]">
-                <div className="book-cover-content">
-                  <div className="text-[9px] font-bold uppercase tracking-widest opacity-70">
-                    Fiction
-                  </div>
+    <div className="flex h-[250px] items-center justify-center overflow-hidden rounded-2xl bg-[#fbf7ef] p-4 sm:h-[300px]">
+      <img
+        src="https://covers.openlibrary.org/b/isbn/9780062315007-L.jpg"
+        alt="The Alchemist by Paulo Coelho"
+        className="h-full w-full object-contain drop-shadow-lg"
+      />
+    </div>
+  </div>
 
-                  <div className="mt-1 font-serif text-xl font-semibold">
-                    The Alchemist
-                  </div>
+  <div className="mx-auto mt-8 flex w-fit items-center gap-2 rounded-full border border-[#e3d8c0] bg-white px-4 py-2 text-[10px] font-bold text-[#17273f] shadow-[0_12px_30px_-20px_rgba(23,39,63,0.5)]">
+    <span className="h-2 w-2 rounded-full bg-[#3f7a57]" />
+    24 books available nearby
+  </div>
+</div>
 
-                  <div className="mt-1 text-[10px] opacity-75">
-                    Paulo Coelho
-                  </div>
-                </div>
-              </div>
-            </div>
 
-            <div className="mx-auto mt-8 flex w-fit items-center gap-2 rounded-full border border-[#e3d8c0] bg-white px-4 py-2 text-[10px] font-bold text-[#17273f] shadow-[0_12px_30px_-20px_rgba(23,39,63,0.5)]">
-              <span className="h-2 w-2 rounded-full bg-[#3f7a57]" />
-              24 books available nearby
-            </div>
-          </div>
         </div>
       </section>
 
@@ -168,28 +188,35 @@ export default function MainHomePage() {
               key={book.title}
               className="overflow-hidden rounded-2xl border border-[#e3d8c0] bg-white transition hover:-translate-y-1"
             >
-              <div className={`book-cover ${book.cover} h-[185px] p-3 sm:h-[220px]`}>
-                <button
-                  aria-label={`Save ${book.title}`}
-                  className="absolute right-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur"
-                >
-                  <Heart size={15} />
-                </button>
+             
 
-                <div className="book-cover-content">
-                  <div className="text-[8px] font-bold uppercase tracking-widest opacity-70">
-                    {book.category}
-                  </div>
 
-                  <div className="mt-1 font-serif text-base font-semibold leading-tight sm:text-lg">
-                    {book.title}
-                  </div>
+<div className="relative flex h-[220px] items-center justify-center overflow-hidden bg-[#f0e6d2] p-4 sm:h-[250px]">
+  <img
+    src={
+      book.title === 'Atomic Habits'
+        ? 'https://covers.openlibrary.org/b/isbn/9780735211292-L.jpg'
+        : book.title === 'The Alchemist'
+          ? 'https://covers.openlibrary.org/b/isbn/9780062315007-L.jpg'
+          : book.title === 'Ikigai'
+            ? 'https://covers.openlibrary.org/b/isbn/9780143130727-L.jpg'
+            : 'https://covers.openlibrary.org/b/isbn/9780857197689-L.jpg'
+    }
+    alt={`${book.title} by ${book.author}`}
+    loading="lazy"
+    className="h-full w-full object-contain drop-shadow-md"
+  />
 
-                  <div className="mt-1 text-[9px] opacity-75">
-                    {book.author}
-                  </div>
-                </div>
-              </div>
+  <button
+    aria-label={`Save ${book.title}`}
+    className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-[#17273f]/80 text-white shadow-sm backdrop-blur"
+  >
+    <Heart size={15} />
+  </button>
+</div>
+
+
+
 
               <div className="p-3">
                 <h3 className="text-base leading-tight">{book.title}</h3>
@@ -258,6 +285,15 @@ export default function MainHomePage() {
           })}
         </div>
       </section>
+      <AuthModal
+  open={authOpen}
+  initialMode={authMode}
+  onClose={() => setAuthOpen(false)}
+  onSuccess={() => {
+    setAuthOpen(false);
+    window.location.reload();
+  }}
+/>
     </main>
   );
 }

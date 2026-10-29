@@ -2,6 +2,7 @@ import { RentalStatus } from "@prisma/client";
 import prisma from "../lib/prisma.js";
 import AppError from "../utils/AppError.js";
 import { createRentalSchema } from "../utils/rental.validation.js";
+import { emitNotification } from "../services/notification.service.js";
 const ACTIVE_RENTAL_STATUSES = [
     RentalStatus.REQUESTED,
     RentalStatus.APPROVED,
@@ -113,6 +114,13 @@ export const createRental = async (req, res, next) => {
                     },
                 },
             },
+        });
+        await emitNotification([book.ownerId], {
+            type: "RENTAL_REQUEST",
+            title: "New rental request",
+            message: `${rental.renter.name} requested "${book.title}" from ${rentalDays} day(s).`,
+            href: `/rentals/${rental.id}`,
+            rentalId: rental.id,
         });
         res.status(201).json({
             success: true,
@@ -252,7 +260,7 @@ export const getRentalById = async (req, res, next) => {
                 conditionRecords: true,
                 payments: true,
                 disputes: true,
-                review: true,
+                reviews: true,
             },
         });
         if (!rental) {
@@ -292,6 +300,7 @@ export const approveRental = async (req, res, next) => {
             select: {
                 id: true,
                 ownerId: true,
+                renterId: true,
                 status: true,
                 bookId: true,
             },
@@ -305,31 +314,35 @@ export const approveRental = async (req, res, next) => {
         if (rental.status !== RentalStatus.REQUESTED) {
             throw new AppError("Only requested rentals can be approved", 400);
         }
-        const approvedRental = await prisma.$transaction(async (tx) => {
-            const updatedRental = await tx.rental.update({
-                where: {
-                    id,
-                },
-                data: {
-                    status: RentalStatus.APPROVED,
-                    approvedAt: new Date(),
-                },
-                include: {
-                    book: {
-                        select: {
-                            id: true,
-                            title: true,
-                        },
-                    },
-                    renter: {
-                        select: {
-                            id: true,
-                            name: true,
-                        },
+        const approvedRental = await prisma.rental.update({
+            where: {
+                id,
+            },
+            data: {
+                status: RentalStatus.APPROVED,
+                approvedAt: new Date(),
+            },
+            include: {
+                book: {
+                    select: {
+                        id: true,
+                        title: true,
                     },
                 },
-            });
-            return updatedRental;
+                renter: {
+                    select: {
+                        id: true,
+                        name: true,
+                    },
+                },
+            },
+        });
+        await emitNotification([approvedRental.renterId], {
+            type: "APPROVED",
+            title: "Rental request approved",
+            message: `Your rental of "${approvedRental.book.title}" was approved. Complete payment to confirm it.`,
+            href: `/rentals/${approvedRental.id}`,
+            rentalId: approvedRental.id,
         });
         res.status(200).json({
             success: true,
@@ -378,6 +391,20 @@ export const rejectRental = async (req, res, next) => {
             data: {
                 status: RentalStatus.REJECTED,
             },
+            include: {
+                book: {
+                    select: {
+                        title: true,
+                    },
+                },
+            },
+        });
+        await emitNotification([rejectedRental.renterId], {
+            type: "REJECTED",
+            title: "Rental request rejected",
+            message: `"${rejectedRental.book.title}" is no longer available for your requested dates.`,
+            href: `/rentals/${rejectedRental.id}`,
+            rentalId: rejectedRental.id,
         });
         res.status(200).json({
             success: true,
@@ -407,7 +434,13 @@ export const cancelRental = async (req, res, next) => {
             select: {
                 id: true,
                 renterId: true,
+                ownerId: true,
                 status: true,
+                book: {
+                    select: {
+                        title: true,
+                    },
+                },
             },
         });
         if (!rental) {
@@ -431,6 +464,13 @@ export const cancelRental = async (req, res, next) => {
             data: {
                 status: RentalStatus.CANCELLED,
             },
+        });
+        await emitNotification([rental.ownerId], {
+            type: "CANCELLED",
+            title: "Rental request cancelled",
+            message: `Your request for "${rental.book.title}" was cancelled.`,
+            href: `/rentals/${cancelledRental.id}`,
+            rentalId: cancelledRental.id,
         });
         res.status(200).json({
             success: true,
@@ -478,6 +518,16 @@ export const markHandover = async (req, res, next) => {
             data: {
                 status: RentalStatus.HANDOVER_PENDING,
             },
+            include: {
+                book: { select: { title: true } },
+            },
+        });
+        await emitNotification([updatedRental.renterId, updatedRental.ownerId], {
+            type: "HANDOVER",
+            title: "Handover arranged",
+            message: `"${updatedRental.book.title}" is ready to be handed over.`,
+            href: `/rentals/${updatedRental.id}`,
+            rentalId: updatedRental.id,
         });
         res.status(200).json({
             success: true,
@@ -507,6 +557,13 @@ export const startRental = async (req, res, next) => {
                 renterId: true,
                 ownerId: true,
                 status: true,
+                bookId: true,
+                endDate: true,
+                book: {
+                    select: {
+                        title: true,
+                    },
+                },
             },
         });
         if (!rental) {
@@ -520,18 +577,38 @@ export const startRental = async (req, res, next) => {
         if (rental.status !== RentalStatus.HANDOVER_PENDING) {
             throw new AppError("Rental must be in handover status first", 400);
         }
-        const updatedRental = await prisma.rental.update({
+        await prisma.$transaction(async (tx) => {
+            await tx.rental.update({
+                where: { id },
+                data: {
+                    status: RentalStatus.ACTIVE,
+                    handoverAt: new Date(),
+                },
+            });
+            // A single physical copy cannot take another booking while it is out,
+            // even for a window that does not overlap the current one.
+            await tx.book.update({
+                where: { id: rental.bookId },
+                data: {
+                    status: "UNAVAILABLE",
+                },
+            });
+        });
+        await emitNotification([rental.renterId, rental.ownerId], {
+            type: "HANDOVER",
+            title: "Rental started",
+            message: `"${rental.book.title}" is now on loan until ${rental.endDate.toDateString()}.`,
+            href: `/rentals/${rental.id}`,
+            rentalId: rental.id,
+        });
+        const startedRental = await prisma.rental.findUnique({
             where: { id },
-            data: {
-                status: RentalStatus.ACTIVE,
-                handoverAt: new Date(),
-            },
         });
         res.status(200).json({
             success: true,
             message: "Rental started successfully",
             data: {
-                rental: updatedRental,
+                rental: startedRental,
             },
         });
     }
@@ -553,7 +630,18 @@ export const requestReturn = async (req, res, next) => {
             select: {
                 id: true,
                 renterId: true,
+                ownerId: true,
                 status: true,
+                renter: {
+                    select: {
+                        name: true,
+                    },
+                },
+                book: {
+                    select: {
+                        title: true,
+                    },
+                },
             },
         });
         if (!rental) {
@@ -562,14 +650,22 @@ export const requestReturn = async (req, res, next) => {
         if (rental.renterId !== req.user.userId) {
             throw new AppError("Only the renter can request a return", 403);
         }
-        if (rental.status !== RentalStatus.ACTIVE) {
-            throw new AppError("Only active rentals can be returned", 400);
+        if (rental.status !== RentalStatus.ACTIVE &&
+            rental.status !== RentalStatus.OVERDUE) {
+            throw new AppError("Only active or overdue rentals can be returned", 400);
         }
         const updatedRental = await prisma.rental.update({
             where: { id },
             data: {
                 status: RentalStatus.RETURN_PENDING,
             },
+        });
+        await emitNotification([rental.ownerId], {
+            type: "RETURN",
+            title: "Return requested",
+            message: `${rental.renter.name} has returned "${rental.book.title}". Please inspect it.`,
+            href: `/rentals/${rental.id}`,
+            rentalId: rental.id,
         });
         res.status(200).json({
             success: true,
@@ -597,7 +693,13 @@ export const startInspection = async (req, res, next) => {
             select: {
                 id: true,
                 ownerId: true,
+                renterId: true,
                 status: true,
+                book: {
+                    select: {
+                        title: true,
+                    },
+                },
             },
         });
         if (!rental) {
@@ -615,6 +717,13 @@ export const startInspection = async (req, res, next) => {
                 status: RentalStatus.INSPECTION,
                 returnedAt: new Date(),
             },
+        });
+        await emitNotification([rental.renterId], {
+            type: "RETURN",
+            title: "Inspection started",
+            message: `The owner is inspecting "${rental.book.title}" you returned.`,
+            href: `/rentals/${rental.id}`,
+            rentalId: rental.id,
         });
         res.status(200).json({
             success: true,
@@ -642,8 +751,14 @@ export const completeRental = async (req, res, next) => {
             select: {
                 id: true,
                 ownerId: true,
+                renterId: true,
                 status: true,
                 bookId: true,
+                book: {
+                    select: {
+                        title: true,
+                    },
+                },
             },
         });
         if (!rental) {
@@ -673,11 +788,106 @@ export const completeRental = async (req, res, next) => {
             });
             return updatedRental;
         });
+        await emitNotification([rental.renterId], {
+            type: "COMPLETED",
+            title: "Rental completed",
+            message: `"${rental.book.title}" has been marked received and your rental is closed. Leave a review for the owner.`,
+            href: `/rentals/${rental.id}`,
+            rentalId: rental.id,
+        });
         res.status(200).json({
             success: true,
             message: "Rental completed successfully",
             data: {
                 rental: completedRental,
+            },
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+};
+export const markLost = async (req, res, next) => {
+    try {
+        if (!req.user) {
+            throw new AppError("Authentication required", 401);
+        }
+        const id = req.params.id;
+        if (typeof id !== "string") {
+            throw new AppError("Invalid rental ID", 400);
+        }
+        const notes = typeof req.body?.notes === "string"
+            ? req.body.notes.trim()
+            : "";
+        const rental = await prisma.rental.findUnique({
+            where: { id },
+            select: {
+                id: true,
+                renterId: true,
+                ownerId: true,
+                status: true,
+                bookId: true,
+                book: {
+                    select: {
+                        title: true,
+                    },
+                },
+            },
+        });
+        if (!rental) {
+            throw new AppError("Rental not found", 404);
+        }
+        const isOwner = rental.ownerId === req.user.userId;
+        const isRenter = rental.renterId === req.user.userId;
+        if (!isOwner && !isRenter) {
+            throw new AppError("You do not have access to this rental", 403);
+        }
+        const lostFromStatuses = [
+            RentalStatus.ACTIVE,
+            RentalStatus.OVERDUE,
+            RentalStatus.RETURN_PENDING,
+        ];
+        if (!lostFromStatuses.includes(rental.status)) {
+            throw new AppError("A book can only be reported lost while it is out on loan", 400);
+        }
+        const reporter = isRenter ? "renter" : "owner";
+        await prisma.$transaction(async (tx) => {
+            await tx.rental.update({
+                where: { id },
+                data: {
+                    status: RentalStatus.LOST,
+                },
+            });
+            await tx.conditionRecord.create({
+                data: {
+                    status: "LOST",
+                    notes: notes || `Reported ${reporter} as lost.`,
+                    rentalId: id,
+                },
+            });
+            // The copy never comes back, so it stays off the catalogue.
+            await tx.book.update({
+                where: { id: rental.bookId },
+                data: {
+                    status: "UNAVAILABLE",
+                },
+            });
+        });
+        await emitNotification([rental.renterId, rental.ownerId], {
+            type: "LOST",
+            title: "Book reported lost",
+            message: `"${rental.book.title}" has been marked lost by the ${reporter}.`,
+            href: `/rentals/${rental.id}`,
+            rentalId: rental.id,
+        });
+        const lostRental = await prisma.rental.findUnique({
+            where: { id },
+        });
+        res.status(200).json({
+            success: true,
+            message: "Rental marked as lost",
+            data: {
+                rental: lostRental,
             },
         });
     }

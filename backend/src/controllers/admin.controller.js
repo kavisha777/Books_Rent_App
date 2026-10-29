@@ -1,5 +1,6 @@
 import prisma from "../lib/prisma.js";
 import AppError from "../utils/AppError.js";
+import { emitNotification } from "../services/notification.service.js";
 export const getAdminStats = async (req, res, next) => {
     try {
         const [totalUsers, totalBooks, totalRentals, activeRentals, totalPayments, openDisputes,] = await Promise.all([
@@ -131,15 +132,65 @@ export const updateDisputeStatus = async (req, res, next) => {
         if (!dispute) {
             throw new AppError("Dispute not found", 404);
         }
-        const updatedDispute = await prisma.dispute.update({
-            where: {
-                id: disputeId,
-            },
-            data: {
-                status,
-                resolution: resolution?.trim() || null,
-            },
+        const isClosing = status === "RESOLVED" || status === "REJECTED";
+        const updatedDispute = await prisma.$transaction(async (tx) => {
+            const updated = await tx.dispute.update({
+                where: {
+                    id: disputeId,
+                },
+                data: {
+                    status,
+                    resolution: resolution?.trim() || null,
+                },
+            });
+            if (!isClosing) {
+                return updated;
+            }
+            const stillOpen = await tx.dispute.count({
+                where: {
+                    rentalId: dispute.rentalId,
+                    status: {
+                        in: ["OPEN", "UNDER_REVIEW"],
+                    },
+                },
+            });
+            if (stillOpen > 0) {
+                return updated;
+            }
+            // Without a recorded prior status there is nothing safe to restore
+            // to, so leave the rental as it is rather than guessing.
+            if (!dispute.previousRentalStatus) {
+                return updated;
+            }
+            await tx.rental.update({
+                where: {
+                    id: dispute.rentalId,
+                },
+                data: {
+                    status: dispute.previousRentalStatus,
+                },
+            });
+            return updated;
         });
+        if (isClosing) {
+            const rental = await prisma.rental.findUnique({
+                where: {
+                    id: dispute.rentalId,
+                },
+                select: {
+                    renterId: true,
+                    ownerId: true,
+                    status: true,
+                },
+            });
+            await emitNotification([rental?.renterId, rental?.ownerId], {
+                type: "DISPUTE",
+                title: `Dispute ${status.toLowerCase()}`,
+                message: `An admin ${status === "RESOLVED" ? "resolved" : "rejected"} the dispute on your rental.${resolution ? ` Resolution: ${resolution}` : ""}`,
+                href: `/rentals/${dispute.rentalId}`,
+                rentalId: dispute.rentalId,
+            });
+        }
         res.status(200).json({
             success: true,
             message: "Dispute updated successfully",

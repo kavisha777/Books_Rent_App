@@ -18,7 +18,7 @@ export declare const createMockRentalPayment: (rentalId: string) => Promise<{
         bookId: string;
         renterId: string;
         ownerId: string;
-    };
+    } | null;
     payments: {
         id: string;
         type: import("@prisma/client").$Enums.PaymentType;

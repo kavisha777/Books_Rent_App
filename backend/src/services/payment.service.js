@@ -12,44 +12,57 @@ export const createMockRentalPayment = async (rentalId) => {
     if (rental.paymentStatus === "PAID") {
         throw new AppError("Payment has already been completed", 400);
     }
-    const rentalPayment = await prisma.payment.create({
-        data: {
-            type: "RENTAL",
-            amount: rental.rentalAmount,
-            currency: "LKR",
-            status: "PAID",
-            provider: "MOCK",
-            providerPaymentId: `MOCK-RENTAL-${rental.id}`,
-            rentalId: rental.id,
-        },
+    const rentalPayment = await prisma.$transaction(async (tx) => {
+        // Claim the rental first so two concurrent pay requests cannot both
+        // record a payment; the guard is part of the same transaction.
+        const claimed = await tx.rental.updateMany({
+            where: {
+                id: rental.id,
+                paymentStatus: {
+                    not: "PAID",
+                },
+            },
+            data: {
+                paymentStatus: "PAID",
+                status: "CONFIRMED",
+                confirmedAt: new Date(),
+            },
+        });
+        if (claimed.count === 0) {
+            throw new AppError("Payment has already been completed", 400);
+        }
+        const rent = await tx.payment.create({
+            data: {
+                type: "RENTAL",
+                amount: rental.rentalAmount,
+                currency: "LKR",
+                status: "PAID",
+                provider: "MOCK",
+                providerPaymentId: `MOCK-RENTAL-${rental.id}`,
+                rentalId: rental.id,
+            },
+        });
+        const deposit = await tx.payment.create({
+            data: {
+                type: "SECURITY_DEPOSIT",
+                amount: rental.securityDeposit,
+                currency: "LKR",
+                status: "PAID",
+                provider: "MOCK",
+                providerPaymentId: `MOCK-DEPOSIT-${rental.id}`,
+                rentalId: rental.id,
+            },
+        });
+        const updatedRental = await tx.rental.findUnique({
+            where: {
+                id: rental.id,
+            },
+        });
+        return {
+            rental: updatedRental,
+            payments: [rent, deposit],
+        };
     });
-    const depositPayment = await prisma.payment.create({
-        data: {
-            type: "SECURITY_DEPOSIT",
-            amount: rental.securityDeposit,
-            currency: "LKR",
-            status: "PAID",
-            provider: "MOCK",
-            providerPaymentId: `MOCK-DEPOSIT-${rental.id}`,
-            rentalId: rental.id,
-        },
-    });
-    const updatedRental = await prisma.rental.update({
-        where: {
-            id: rental.id,
-        },
-        data: {
-            paymentStatus: "PAID",
-            status: "CONFIRMED",
-            confirmedAt: new Date(),
-        },
-    });
-    return {
-        rental: updatedRental,
-        payments: [
-            rentalPayment,
-            depositPayment,
-        ],
-    };
+    return rentalPayment;
 };
 //# sourceMappingURL=payment.service.js.map
