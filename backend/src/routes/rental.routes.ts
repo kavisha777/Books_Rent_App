@@ -3,6 +3,7 @@ import { Router } from "express";
 import authMiddleware from "../middleware/auth.middleware.js";
 
 import {
+  getBookAvailability,
   createRental,
   getMyRentals,
   getOwnerRentalRequests,
@@ -20,6 +21,11 @@ import {
 
 const router = Router();
 
+
+router.get(
+  "/availability/:bookId",
+  getBookAvailability
+);
 /*
  * All rental routes require authentication.
  */
@@ -40,6 +46,7 @@ router.get(
   "/my",
   getMyRentals
 );
+
 
 /*
  * Rental requests for owner's books

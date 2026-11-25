@@ -1,5 +1,6 @@
 import type { NextFunction, Response } from "express";
 import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
+export declare const getBookAvailability: (req: import("express").Request, res: Response, next: NextFunction) => Promise<void>;
 export declare const createRental: (req: AuthenticatedRequest, res: Response, next: NextFunction) => Promise<void>;
 export declare const getMyRentals: (req: AuthenticatedRequest, res: Response, next: NextFunction) => Promise<void>;
 export declare const getOwnerRentalRequests: (req: AuthenticatedRequest, res: Response, next: NextFunction) => Promise<void>;

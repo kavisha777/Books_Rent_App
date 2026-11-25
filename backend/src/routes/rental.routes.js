@@ -1,7 +1,8 @@
 import { Router } from "express";
 import authMiddleware from "../middleware/auth.middleware.js";
-import { createRental, getMyRentals, getOwnerRentalRequests, getRentalById, approveRental, rejectRental, cancelRental, requestReturn, markHandover, startRental, startInspection, completeRental, markLost, } from "../controllers/rental.controller.js";
+import { getBookAvailability, createRental, getMyRentals, getOwnerRentalRequests, getRentalById, approveRental, rejectRental, cancelRental, requestReturn, markHandover, startRental, startInspection, completeRental, markLost, } from "../controllers/rental.controller.js";
 const router = Router();
+router.get("/availability/:bookId", getBookAvailability);
 /*
  * All rental routes require authentication.
  */

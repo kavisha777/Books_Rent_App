@@ -35,6 +35,62 @@ const calculateRentalDays = (
   return Math.max(days, 1);
 };
 
+
+export const getBookAvailability = async (
+  req: import("express").Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const bookId = req.params.bookId;
+
+    if (typeof bookId !== "string" || !bookId.trim()) {
+      throw new AppError("A valid book ID is required", 400);
+    }
+
+    const book = await prisma.book.findUnique({
+      where: { id: bookId },
+      select: { id: true },
+    });
+
+    if (!book) {
+      throw new AppError("Book not found", 404);
+    }
+
+    const bookedRentals = await prisma.rental.findMany({
+      where: {
+        bookId,
+        status: {
+          in: ACTIVE_RENTAL_STATUSES,
+        },
+        endDate: {
+          gt: new Date(),
+        },
+      },
+      select: {
+        startDate: true,
+        endDate: true,
+      },
+      orderBy: {
+        startDate: "asc",
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        bookedDates: bookedRentals.map((rental) => ({
+          startDate: rental.startDate.toISOString(),
+          endDate: rental.endDate.toISOString(),
+        })),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
 export const createRental = async (
   req: AuthenticatedRequest,
   res: Response,
