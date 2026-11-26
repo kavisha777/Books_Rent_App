@@ -1,3 +1,4 @@
+
 import MainNav from './components/MainNav';
 
 export default function MainLayout({
@@ -6,10 +7,12 @@ export default function MainLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <div className="min-h-screen bg-[#fbf7ef]">
+    <div className="min-h-screen bg-[#faf3e8]">
       <MainNav />
 
-      <div className="pb-20 md:pb-0">{children}</div>
+      <main className="min-h-screen pb-24 md:pb-0">
+        {children}
+      </main>
     </div>
   );
 }

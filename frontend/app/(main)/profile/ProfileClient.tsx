@@ -1,17 +1,25 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+
 import {
+  ArrowRight,
   ArrowLeft,
   BookOpen,
   CalendarDays,
   CheckCircle2,
-  Edit3,
+  Compass,
+  Bell,
+  Library,
+  LogOut,
   Mail,
-  MapPin,
   ShieldCheck,
   User,
+  PlusCircle,
+  ClipboardList,
 } from 'lucide-react';
 
 import { apiRequest } from '../../../lib/api';
@@ -56,13 +64,16 @@ export default function ProfileClient() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+
     const loadProfile = async () => {
       const token = getAccessToken();
 
       if (!token) {
-        router.replace('/login');
+        router.replace('/auth/login');
         return;
       }
 
@@ -84,15 +95,17 @@ export default function ProfileClient() {
           throw new Error('Profile information was not returned.');
         }
 
+        if (cancelled) return;
+
         setProfile(user);
 
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(
-            'bookloop_user',
-            JSON.stringify(user),
-          );
-        }
+        localStorage.setItem(
+          'bookloop_user',
+          JSON.stringify(user),
+        );
       } catch (err) {
+        if (cancelled) return;
+
         const message =
           err instanceof Error
             ? err.message
@@ -104,23 +117,36 @@ export default function ProfileClient() {
           message.toLowerCase().includes('unauthorized')
         ) {
           clearAuth();
-          router.replace('/login');
+          router.replace('/auth/login');
           return;
         }
 
         setError(message);
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
 
     void loadProfile();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
-  const handleLogout = () => {
+  function handleLogout() {
+    if (loggingOut) return;
+
+    setLoggingOut(true);
     clearAuth();
-    router.replace('/login');
-  };
+
+    localStorage.removeItem('bookloop_user');
+
+    router.replace('/auth/login');
+    router.refresh();
+  }
 
   if (loading) {
     return (
@@ -133,14 +159,16 @@ export default function ProfileClient() {
 
             <div className="p-6">
               <div className="h-20 w-20 -mt-16 animate-pulse rounded-full bg-[var(--cream)]" />
+
               <div className="mt-5 h-7 w-48 animate-pulse rounded bg-[var(--cream)]" />
+
               <div className="mt-3 h-4 w-64 animate-pulse rounded bg-[var(--cream)]" />
 
               <div className="mt-8 grid gap-4 md:grid-cols-2">
                 {[1, 2, 3, 4].map((item) => (
                   <div
                     key={item}
-                    className="h-20 animate-pulse rounded-2xl bg-[var(--cream)]"
+                    className="h-24 animate-pulse rounded-2xl bg-[var(--cream)]"
                   />
                 ))}
               </div>
@@ -175,6 +203,14 @@ export default function ProfileClient() {
             >
               Try again
             </button>
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="mt-4 block w-full text-sm font-semibold text-[var(--red)]"
+            >
+              Log out
+            </button>
           </div>
         </div>
       </main>
@@ -190,9 +226,44 @@ export default function ProfileClient() {
         .toUpperCase()
     : 'BL';
 
+  const actions = [
+    {
+      title: 'My Rentals',
+      description: 'View the books you have borrowed and their rental status.',
+      href: '/rentals',
+      icon: BookOpen,
+    },
+    {
+      title: 'Rental Requests',
+      description: 'Manage requests related to your rental activity.',
+      href: '/rentals',
+      icon: ClipboardList,
+    },
+    {
+      title: 'List a Book',
+      description: 'Add a book to BookLoop and share it with other readers.',
+      href: '/list-book',
+      icon: PlusCircle,
+    },
+    {
+      title: 'Explore Books',
+      description: 'Discover books available from other readers.',
+      href: '/explore',
+      icon: Compass,
+    },
+    {
+      title: 'Notifications',
+      description: 'Check updates and important account notifications.',
+      href: '/notifications',
+      icon: Bell,
+    },
+  ];
+
   return (
-    <main className="min-h-screen bg-[var(--offwhite)] pb-24 md:pb-12">
+    <main className="min-h-screen bg-[var(--offwhite)] pb-28 md:pb-12">
       <div className="bl-container py-6 md:py-10">
+
+        {/* PAGE HEADER */}
         <div className="mb-6 flex items-center justify-between">
           <button
             type="button"
@@ -204,20 +275,35 @@ export default function ProfileClient() {
           </button>
 
           <span className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ink-muted)]">
-            My profile
+            My Account
           </span>
         </div>
 
+        {/* PROFILE CARD */}
         <section className="bl-card overflow-hidden">
-          <div className="relative h-32 bg-[var(--navy)] md:h-44">
+
+          {/* COVER */}
+          <div className="relative h-32 overflow-hidden bg-[var(--navy)] md:h-44">
             <div className="absolute inset-0 opacity-20">
               <div className="absolute -right-10 -top-20 h-64 w-64 rounded-full border border-white/30" />
               <div className="absolute -bottom-28 left-20 h-72 w-72 rounded-full border border-white/20" />
             </div>
+
+            <div className="absolute bottom-5 left-7 text-white/80">
+              <p className="text-xs font-bold uppercase tracking-[0.2em]">
+                BookLoop
+              </p>
+              <p className="mt-1 font-serif text-lg">
+                Your reading community
+              </p>
+            </div>
           </div>
 
           <div className="relative px-5 pb-7 md:px-8">
+
+            {/* USER INFORMATION */}
             <div className="-mt-11 flex flex-col gap-5 sm:-mt-12 sm:flex-row sm:items-end sm:justify-between">
+
               <div className="flex items-end gap-4">
                 <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-full border-4 border-white bg-[var(--gold-soft)] text-2xl font-extrabold text-[var(--navy)] shadow-sm">
                   {initials}
@@ -225,134 +311,193 @@ export default function ProfileClient() {
 
                 <div className="pb-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="text-2xl md:text-3xl">
+                    <h1 className="text-2xl font-bold text-[var(--ink)] md:text-3xl">
                       {profile.name}
                     </h1>
 
                     <span className="inline-flex items-center gap-1 rounded-full bg-[var(--green-soft)] px-2.5 py-1 text-[11px] font-bold text-[var(--green)]">
                       <CheckCircle2 size={12} />
-                      Verified account
+                      Account active
                     </span>
                   </div>
 
                   <p className="mt-1 text-sm text-[var(--ink-soft)]">
-                    BookLoop member
+                    BookLoop Member
                   </p>
                 </div>
               </div>
 
               <button
                 type="button"
-                onClick={() => {
-                  window.alert(
-                    'Profile editing will be connected when the backend provides a profile update endpoint.',
-                  );
-                }}
-                className="bl-button bl-button-outline w-full sm:w-auto"
+                onClick={handleLogout}
+                disabled={loggingOut}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[var(--red)]/30 bg-[var(--red-soft)] px-5 py-3 text-sm font-bold text-[var(--red)] transition hover:opacity-80 disabled:opacity-50 sm:w-auto"
               >
-                <Edit3 size={16} />
-                Edit profile
+                <LogOut size={17} />
+                {loggingOut ? 'Logging out...' : 'Log out'}
               </button>
             </div>
 
-            <div className="mt-8 grid gap-4 md:grid-cols-2">
-              <div className="rounded-2xl border border-[var(--border)] bg-[var(--offwhite)] p-5">
-                <div className="flex items-start gap-4">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--gold-soft)] text-[var(--gold)]">
-                    <Mail size={19} />
-                  </div>
+            {/* ACCOUNT INFORMATION */}
+            <div className="mt-8">
+              <h2 className="mb-4 text-lg font-bold text-[var(--ink)]">
+                Account Information
+              </h2>
 
-                  <div className="min-w-0">
-                    <p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--ink-muted)]">
-                      Email
-                    </p>
-                    <p className="mt-1 break-all text-sm font-semibold text-[var(--ink)]">
-                      {profile.email}
-                    </p>
+              <div className="grid gap-4 md:grid-cols-2">
+
+                {/* EMAIL */}
+                <div className="rounded-2xl border border-[var(--border)] bg-[var(--offwhite)] p-5">
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--gold-soft)] text-[var(--gold)]">
+                      <Mail size={19} />
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--ink-muted)]">
+                        Email Address
+                      </p>
+
+                      <p className="mt-1 break-all text-sm font-semibold text-[var(--ink)]">
+                        {profile.email}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="rounded-2xl border border-[var(--border)] bg-[var(--offwhite)] p-5">
-                <div className="flex items-start gap-4">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--green-soft)] text-[var(--green)]">
-                    <ShieldCheck size={19} />
-                  </div>
+                {/* ROLE */}
+                <div className="rounded-2xl border border-[var(--border)] bg-[var(--offwhite)] p-5">
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--green-soft)] text-[var(--green)]">
+                      <ShieldCheck size={19} />
+                    </div>
 
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--ink-muted)]">
-                      Account role
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-[var(--ink)]">
-                      {profile.role === 'ADMIN'
-                        ? 'Administrator'
-                        : 'BookLoop Member'}
-                    </p>
-                  </div>
-                </div>
-              </div>
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--ink-muted)]">
+                        Account Role
+                      </p>
 
-              <div className="rounded-2xl border border-[var(--border)] bg-[var(--offwhite)] p-5">
-                <div className="flex items-start gap-4">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--cream)] text-[var(--navy)]">
-                    <CalendarDays size={19} />
-                  </div>
-
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--ink-muted)]">
-                      Member since
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-[var(--ink)]">
-                      {formatDate(profile.createdAt)}
-                    </p>
+                      <p className="mt-1 text-sm font-semibold text-[var(--ink)]">
+                        {profile.role === 'ADMIN'
+                          ? 'Administrator'
+                          : 'BookLoop Member'}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="rounded-2xl border border-[var(--border)] bg-[var(--offwhite)] p-5">
-                <div className="flex items-start gap-4">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--cream)] text-[var(--navy)]">
-                    <BookOpen size={19} />
-                  </div>
+                {/* MEMBER SINCE */}
+                <div className="rounded-2xl border border-[var(--border)] bg-[var(--offwhite)] p-5">
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--cream)] text-[var(--navy)]">
+                      <CalendarDays size={19} />
+                    </div>
 
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--ink-muted)]">
-                      BookLoop activity
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-[var(--ink)]">
-                      View your rentals and listed books
-                    </p>
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--ink-muted)]">
+                        Member Since
+                      </p>
+
+                      <p className="mt-1 text-sm font-semibold text-[var(--ink)]">
+                        {formatDate(profile.createdAt)}
+                      </p>
+                    </div>
                   </div>
                 </div>
+
+                {/* ACCOUNT STATUS */}
+                <div className="rounded-2xl border border-[var(--border)] bg-[var(--offwhite)] p-5">
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--cream)] text-[var(--navy)]">
+                      <User size={19} />
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--ink-muted)]">
+                        Account Status
+                      </p>
+
+                      <p className="mt-1 text-sm font-semibold text-[var(--green)]">
+                        Active
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
               </div>
             </div>
 
-            <div className="mt-7 rounded-2xl border border-[var(--border)] bg-white p-5">
+            {/* BOOKLOOP ACTIVITIES */}
+            <div className="mt-10">
+              <div>
+                <h2 className="text-xl font-bold text-[var(--ink)]">
+                  My BookLoop
+                </h2>
+
+                <p className="mt-1 text-sm text-[var(--ink-soft)]">
+                  Manage your borrowing and lending activities from one place.
+                </p>
+              </div>
+
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+
+                {actions.map((action) => {
+                  const Icon = action.icon;
+
+                  return (
+                    <Link
+                      key={action.title}
+                      href={action.href}
+                      className="group flex items-center gap-4 rounded-2xl border border-[var(--border)] bg-white p-5 transition hover:-translate-y-0.5 hover:border-[var(--gold)] hover:shadow-md"
+                    >
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--gold-soft)] text-[var(--navy)] transition group-hover:bg-[var(--navy)] group-hover:text-white">
+                        <Icon size={22} />
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-bold text-[var(--ink)]">
+                          {action.title}
+                        </h3>
+
+                        <p className="mt-1 text-xs leading-5 text-[var(--ink-soft)]">
+                          {action.description}
+                        </p>
+                      </div>
+
+                      <ArrowRight
+                        size={18}
+                        className="shrink-0 text-[var(--ink-muted)] transition group-hover:translate-x-1 group-hover:text-[var(--gold)]"
+                      />
+                    </Link>
+                  );
+                })}
+
+              </div>
+            </div>
+
+            {/* ACCOUNT NOTE */}
+            <div className="mt-8 rounded-2xl border border-[var(--border)] bg-white p-5">
               <div className="flex items-start gap-3">
-                <MapPin
-                  size={19}
-                  className="mt-0.5 text-[var(--gold)]"
+                <BookOpen
+                  size={21}
+                  className="mt-0.5 shrink-0 text-[var(--gold)]"
                 />
 
                 <div>
-                  <h2 className="text-lg">Your BookLoop account</h2>
+                  <h2 className="font-bold text-[var(--ink)]">
+                    One account. Two ways to enjoy BookLoop.
+                  </h2>
+
                   <p className="mt-1 text-sm leading-6 text-[var(--ink-soft)]">
-                    Your account is ready to borrow books and list
-                    your own books for other readers. More profile
-                    statistics will appear here as the corresponding
-                    backend features are added.
+                    You can borrow books from other readers and list your
+                    own books for others to borrow using the same account.
+                    You do not need separate accounts for borrowing and
+                    lending.
                   </p>
                 </div>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="mt-7 w-full rounded-xl border border-[var(--red)]/30 bg-[var(--red-soft)] px-4 py-3 text-sm font-bold text-[var(--red)] transition hover:bg-[var(--red-soft)]/70"
-            >
-              Log out
-            </button>
           </div>
         </section>
       </div>

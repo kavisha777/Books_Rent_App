@@ -1,273 +1,423 @@
+
 'use client';
 
-import AuthModal from '../../(main)/components/AuthModal';
-import { isAuthenticated , getAccessToken} from '../../../lib/auth';
-import { apiRequest } from '@/lib/api';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+
 import {
   Bell,
   BookOpen,
   Compass,
   Home,
+  LayoutDashboard,
+  LogOut,
   Plus,
   UserRound,
 } from 'lucide-react';
 
+import { apiRequest } from '@/lib/api';
+
+import {
+  getAccessToken,
+  getCurrentUser,
+  isAuthenticated,
+  logout,
+  type AuthUser,
+} from '@/lib/auth';
+
+import AuthModal from './AuthModal';
 
 const desktopLinks = [
   {
-    href: '/',
     label: 'Home',
-    icon: Home,
-  },
-  {
-    href: '/explore',
-    label: 'Explore',
-    icon: Compass,
-  },
- 
-];
-
-const mobileLinks = [
-  {
     href: '/',
-    label: 'Home',
-    icon: Home,
   },
   {
-    href: '/explore',
     label: 'Explore',
-    icon: Compass,
-  },
- 
-  {
-    href: '/notifications',
-    label: 'Alerts',
-    icon: Bell,
+    href: '/explore',
   },
 ];
 
-function isActive(pathname: string, href: string) {
-  if (href === '/') {
-    return pathname === '/';
-  }
-
-  return pathname.startsWith(href);
-}
+type NotificationResponse = {
+  unreadCount?: number;
+  data?: {
+    unreadCount?: number;
+  };
+};
 
 export default function MainNav() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+
   const [unreadCount, setUnreadCount] = useState(0);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const [authOpen, setAuthOpen] = useState(false);
-const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-const [loggedIn, setLoggedIn] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
-useEffect(() => {
-  setLoggedIn(isAuthenticated());
-}, []);
+  const isAdmin = currentUser?.role === 'ADMIN';
 
   useEffect(() => {
-    // MainNav only renders inside the authenticated route group, so a missing
-    // token means this mount never has a badge to clear.
-    if (!getAccessToken()) {
+    const authenticated = isAuthenticated();
+
+    setLoggedIn(authenticated);
+
+    if (authenticated) {
+      setCurrentUser(getCurrentUser());
+    }
+  }, []);
+
+  useEffect(() => {
+    if (loggedIn !== true || !getAccessToken()) {
+      setUnreadCount(0);
       return;
     }
 
-    // Re-read whenever the route changes, so opening the centre clears the dot.
     let cancelled = false;
 
-    apiRequest<{ data?: { unreadCount?: number } }>('/notifications?limit=1', {
-      auth: true,
-    })
-      .then((response) => {
+    async function fetchNotifications() {
+      try {
+        const response = await apiRequest<NotificationResponse>(
+          '/notifications?limit=1',
+          { auth: true },
+        );
+
         if (!cancelled) {
-          setUnreadCount(response.data?.unreadCount ?? 0);
+          setUnreadCount(
+            response.unreadCount ??
+              response.data?.unreadCount ??
+              0,
+          );
         }
-      })
-      .catch(() => {
-        // The dot is decorative when unavailable; never block navigation.
-      });
+      } catch {
+        if (!cancelled) {
+          setUnreadCount(0);
+        }
+      }
+    }
+
+    fetchNotifications();
 
     return () => {
       cancelled = true;
     };
-  }, [pathname]);
+  }, [loggedIn]);
+
+  const isActive = (href: string) => {
+    if (href === '/') {
+      return pathname === '/';
+    }
+
+    return pathname === href || pathname.startsWith(`${href}/`);
+  };
+
+  function openAuth(mode: 'login' | 'register') {
+    setAuthMode(mode);
+    setAuthOpen(true);
+  }
+
+  function handleAuthSuccess() {
+    const user = getCurrentUser();
+
+    setCurrentUser(user);
+    setLoggedIn(true);
+    setUnreadCount(0);
+    setAuthOpen(false);
+
+    if (user?.role === 'ADMIN') {
+      router.replace('/admin');
+    } else {
+      router.replace('/');
+    }
+
+    router.refresh();
+  }
+
+  async function handleLogout() {
+    if (loggingOut) return;
+
+    setLoggingOut(true);
+
+    try {
+      await logout();
+    } finally {
+      setLoggedIn(false);
+      setCurrentUser(null);
+      setUnreadCount(0);
+      setAuthOpen(false);
+
+      router.replace('/');
+      router.refresh();
+
+      setLoggingOut(false);
+    }
+  }
 
   return (
     <>
-      {/* Desktop navigation */}
-      <header className="sticky top-0 z-40 hidden border-b border-[#e3d8c0] bg-white/95 backdrop-blur md:block">
-        <div className="mx-auto flex h-[72px] w-[min(1180px,calc(100%-32px))] items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#17273f] text-white">
-              <BookOpen size={21} />
+      {/* Desktop Navigation */}
+      <header className="sticky top-0 z-50 hidden border-b border-[#e8dfd0] bg-[#faf3e8]/95 backdrop-blur-md md:block">
+        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6 lg:px-10">
+
+          {/* Logo */}
+          <Link href="/" className="flex items-center gap-2">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#182e23] text-[#faf3e8]">
+              <BookOpen size={23} />
             </div>
 
-            <div>
-              <div className="font-serif text-xl font-semibold leading-none text-[#17273f]">
-                BookLoop
-              </div>
-
-              <div className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.16em] text-[#9aa3ae]">
-                Borrow. Lend. Read.
-              </div>
-            </div>
+            <span className="text-2xl font-bold tracking-tight text-[#182e23]">
+              BookLoop
+            </span>
           </Link>
 
-          <nav className="flex items-center gap-7">
-            {desktopLinks.map((item) => {
-              const Icon = item.icon;
-              const active = isActive(pathname, item.href);
-
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href} 
-                  className={`flex items-center gap-1.5 text-sm font-semibold transition ${
-                    active
-                      ? 'text-[#17273f]'
-                      : 'text-[#5b6673] hover:text-[#17273f]'
-                  }`}
-                >
-                  <Icon size={16} />
-                  {item.label}
-                </Link>
-              );
-            })}
+          {/* Main Navigation */}
+          <nav className="flex items-center gap-8">
+            {desktopLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={`text-sm font-semibold transition-colors ${
+                  isActive(link.href)
+                    ? 'text-[#b8843b]'
+                    : 'text-[#526052] hover:text-[#182e23]'
+                }`}
+              >
+                {link.label}
+              </Link>
+            ))}
           </nav>
 
-          <div className="flex items-center gap-2">
-            <Link
-              href="/notifications"
-              aria-label="Notifications"
-              className={`relative flex h-10 w-10 items-center justify-center rounded-xl transition ${
-                isActive(pathname, '/notifications')
-                  ? 'bg-[#f0e6d2] text-[#17273f]'
-                  : 'text-[#5b6673] hover:bg-[#f0e6d2]'
-              }`}
-            >
-              <Bell size={19} />
+          {/* Guest Actions */}
+          {loggedIn === false && (
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => openAuth('login')}
+                className="rounded-full px-5 py-2.5 text-sm font-semibold text-[#182e23] transition hover:bg-[#eee5d7]"
+              >
+                Login
+              </button>
 
-              {unreadCount > 0 && (
-                <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#b8862f] px-1 text-[9px] font-bold text-white">
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </span>
+              <button
+                type="button"
+                onClick={() => openAuth('register')}
+                className="rounded-full bg-[#182e23] px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-[#294936]"
+              >
+                Sign Up
+              </button>
+            </div>
+          )}
+
+          {/* Authenticated Actions */}
+          {loggedIn === true && (
+            <div className="flex items-center gap-4">
+
+              {/* Notifications */}
+              <Link
+                href="/notifications"
+                aria-label="Notifications"
+                className="relative rounded-full p-2 text-[#526052] transition hover:bg-[#eee5d7] hover:text-[#182e23]"
+              >
+                <Bell size={21} />
+
+                {unreadCount > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#b8843b] px-1 text-[10px] font-bold text-white">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </Link>
+
+              {/* Admin Dashboard */}
+              {isAdmin && (
+                <Link
+                  href="/admin"
+                  className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    isActive('/admin')
+                      ? 'bg-[#e9dfcf] text-[#182e23]'
+                      : 'text-[#526052] hover:bg-[#eee5d7]'
+                  }`}
+                >
+                  <LayoutDashboard size={18} />
+                  Admin Dashboard
+                </Link>
               )}
-            </Link>
 
-  <button
-  type="button"
-  aria-label="Profile"
-  onClick={() => {
-    if (isAuthenticated()) {
-      window.location.href = '/profile';
-    } else {
-      setAuthMode('login');
-      setAuthOpen(true);
-    }
-  }}
-  className={`flex h-10 w-10 items-center justify-center rounded-xl transition ${
-    isActive(pathname, '/profile')
-      ? 'bg-[#17273f] text-white'
-      : 'bg-[#f0e6d2] text-[#17273f] hover:bg-[#e7dac0]'
-  }`}
->
-  <UserRound size={18} />
-</button>
+              {/* Normal User Profile */}
+              {!isAdmin && (
+                <Link
+                  href="/profile"
+                  className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    isActive('/profile')
+                      ? 'bg-[#e9dfcf] text-[#182e23]'
+                      : 'text-[#526052] hover:bg-[#eee5d7]'
+                  }`}
+                >
+                  <UserRound size={18} />
+                  Profile
+                </Link>
+              )}
 
-            
-          </div>
+              {/* Logout */}
+              <button
+                type="button"
+                onClick={handleLogout}
+                disabled={loggingOut}
+                className="flex items-center gap-2 rounded-full border border-[#d9cdbb] px-4 py-2 text-sm font-semibold text-[#8a463c] transition hover:bg-[#f2e5dc] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <LogOut size={17} />
+                {loggingOut ? 'Logging out...' : 'Logout'}
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
-      {/* Mobile bottom navigation */}
-      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-[#e3d8c0] bg-white px-1 pb-[max(12px,env(safe-area-inset-bottom))] pt-2 md:hidden">
-        <div className="mx-auto flex max-w-[600px] items-end justify-around">
-          {mobileLinks.slice(0, 2).map((item) => {
-            const Icon = item.icon;
-            const active = isActive(pathname, item.href);
+      {/* Mobile Bottom Navigation */}
+      <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-[#e8dfd0] bg-[#faf3e8]/95 px-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden">
+        <div className="mx-auto flex max-w-lg items-center justify-around py-3">
 
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex w-[68px] flex-col items-center gap-1 text-[9.5px] font-bold ${
-                  active ? 'text-[#17273f]' : 'text-[#9aa3ae]'
-                }`}
-              >
-                <Icon size={19} strokeWidth={active ? 2.3 : 1.8} />
-                {item.label}
-              </Link>
-            );
-          })}
-
-          {/* Floating action button */}
+          {/* Home */}
           <Link
-            href="/list-book"
-            aria-label="List a book"
-            className="relative -mt-7 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#17273f] text-white shadow-[0_10px_25px_-10px_rgba(23,39,63,0.7)]"
+            href="/"
+            className={`flex flex-col items-center gap-1 text-xs font-semibold ${
+              isActive('/')
+                ? 'text-[#b8843b]'
+                : 'text-[#657064]'
+            }`}
           >
-            <Plus size={22} />
+            <Home size={21} />
+            Home
           </Link>
 
-         {mobileLinks.slice(2).map((item) => {
-  const Icon = item.icon;
-  const active = isActive(pathname, item.href);
+          {/* Explore */}
+          <Link
+            href="/explore"
+            className={`flex flex-col items-center gap-1 text-xs font-semibold ${
+              isActive('/explore')
+                ? 'text-[#b8843b]'
+                : 'text-[#657064]'
+            }`}
+          >
+            <Compass size={21} />
+            Explore
+          </Link>
 
-  return (
-    <Link
-      key={item.href}
-      href={item.href}
-      className={`flex w-[68px] flex-col items-center gap-1 text-[9.5px] font-bold ${
-        active ? 'text-[#17273f]' : 'text-[#9aa3ae]'
-      }`}
-    >
-      <span className="relative">
-        <Icon size={19} strokeWidth={active ? 2.3 : 1.8} />
-        {item.href === '/notifications' && unreadCount > 0 && (
-          <span className="absolute -right-1 -top-0.5 h-1.5 w-1.5 rounded-full bg-[#b8862f]" />
-        )}
-      </span>
-      {item.label}
-    </Link>
-  );
-})}
+          {/* Guest Actions */}
+          {loggedIn === false && (
+            <>
+              <button
+                type="button"
+                onClick={() => openAuth('login')}
+                className="flex flex-col items-center gap-1 text-xs font-semibold text-[#657064]"
+              >
+                <UserRound size={21} />
+                Login
+              </button>
 
-<button
-  type="button"
-  aria-label="Profile"
-  onClick={() => {
-    if (isAuthenticated()) {
-      window.location.href = '/profile';
-    } else {
-      setAuthMode('login');
-      setAuthOpen(true);
-    }
-  }}
-  className="flex w-[68px] flex-col items-center gap-1 text-[9.5px] font-bold text-[#9aa3ae]"
->
-  <UserRound size={19} />
-  Profile
-</button>
+              <button
+                type="button"
+                onClick={() => openAuth('register')}
+                className="flex flex-col items-center gap-1 text-xs font-semibold text-[#657064]"
+              >
+                <Plus size={21} />
+                Sign Up
+              </button>
+            </>
+          )}
+
+          {/* Authenticated Actions */}
+          {loggedIn === true && (
+            <>
+              {/* Admin Dashboard for ADMIN */}
+              {isAdmin ? (
+                <Link
+                  href="/admin"
+                  className={`flex flex-col items-center gap-1 text-xs font-semibold ${
+                    isActive('/admin')
+                      ? 'text-[#b8843b]'
+                      : 'text-[#657064]'
+                  }`}
+                >
+                  <LayoutDashboard size={21} />
+                  Admin
+                </Link>
+              ) : (
+                <Link
+                  href="/list-book"
+                  className={`flex flex-col items-center gap-1 text-xs font-semibold ${
+                    isActive('/list-book')
+                      ? 'text-[#b8843b]'
+                      : 'text-[#657064]'
+                  }`}
+                >
+                  <Plus size={21} />
+                  List Book
+                </Link>
+              )}
+
+              {/* Notifications */}
+              <Link
+                href="/notifications"
+                className={`relative flex flex-col items-center gap-1 text-xs font-semibold ${
+                  isActive('/notifications')
+                    ? 'text-[#b8843b]'
+                    : 'text-[#657064]'
+                }`}
+              >
+                <Bell size={21} />
+
+                {unreadCount > 0 && (
+                  <span className="absolute -right-2 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#b8843b] px-1 text-[9px] font-bold text-white">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+
+                Alerts
+              </Link>
+
+              {/* Profile for normal users */}
+              {!isAdmin && (
+                <Link
+                  href="/profile"
+                  className={`flex flex-col items-center gap-1 text-xs font-semibold ${
+                    isActive('/profile')
+                      ? 'text-[#b8843b]'
+                      : 'text-[#657064]'
+                  }`}
+                >
+                  <UserRound size={21} />
+                  Profile
+                </Link>
+              )}
+
+              {/* Logout */}
+              <button
+                type="button"
+                onClick={handleLogout}
+                disabled={loggingOut}
+                className="flex flex-col items-center gap-1 text-xs font-semibold text-[#8a463c] disabled:opacity-50"
+              >
+                <LogOut size={21} />
+                {loggingOut ? 'Please wait' : 'Logout'}
+              </button>
+            </>
+          )}
         </div>
-         
       </nav>
-      <AuthModal
-  open={authOpen}
-  initialMode={authMode}
-  onClose={() => setAuthOpen(false)}
-  onSuccess={() => {
-    setAuthOpen(false);
-    setLoggedIn(true);
-    window.location.reload();
-  }}
-/>
-    </>
 
-    
+      {/* Login and Registration Popup */}
+      {loggedIn === false && (
+        <AuthModal
+          open={authOpen}
+          initialMode={authMode}
+          onClose={() => setAuthOpen(false)}
+          onSuccess={handleAuthSuccess}
+        />
+      )}
+    </>
   );
- 
 }

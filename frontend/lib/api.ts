@@ -1,19 +1,31 @@
+
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
-type ApiOptions = RequestInit & {
+type ApiOptions = Omit<RequestInit, 'body'> & {
   auth?: boolean;
+  body?: BodyInit | Record<string, unknown> | null;
 };
 
 export async function apiRequest<T>(
   endpoint: string,
   options: ApiOptions = {},
 ): Promise<T> {
-  const { auth = false, headers, ...requestOptions } = options;
+  const {
+    auth = false,
+    headers,
+    body,
+    ...requestOptions
+  } = options;
 
   const requestHeaders = new Headers(headers);
 
-  requestHeaders.set('Content-Type', 'application/json');
+  const isFormData =
+    typeof FormData !== 'undefined' && body instanceof FormData;
+
+  if (!isFormData) {
+    requestHeaders.set('Content-Type', 'application/json');
+  }
 
   if (auth && typeof window !== 'undefined') {
     const token = localStorage.getItem('bookloop_access_token');
@@ -23,8 +35,21 @@ export async function apiRequest<T>(
     }
   }
 
+  const requestBody =
+    body !== undefined &&
+    body !== null &&
+    typeof body === 'object' &&
+    !isFormData &&
+    !(typeof Blob !== 'undefined' && body instanceof Blob) &&
+    !(typeof URLSearchParams !== 'undefined' &&
+      body instanceof URLSearchParams) &&
+    !(body instanceof ArrayBuffer)
+      ? JSON.stringify(body)
+      : body as BodyInit | null | undefined;
+
   const response = await fetch(`${API_URL}${endpoint}`, {
     ...requestOptions,
+    body: requestBody,
     headers: requestHeaders,
   });
 

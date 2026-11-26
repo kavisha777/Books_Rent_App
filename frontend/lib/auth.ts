@@ -1,3 +1,4 @@
+
 import { apiRequest } from './api';
 
 const ACCESS_TOKEN_KEY = 'bookloop_access_token';
@@ -14,6 +15,10 @@ type AuthResponse = {
   success?: boolean;
   message?: string;
   data?: {
+    id?: string;
+    name?: string;
+    email?: string;
+    role?: 'USER' | 'ADMIN';
     user?: AuthUser;
     accessToken?: string;
     token?: string;
@@ -33,8 +38,26 @@ function extractAccessToken(response: AuthResponse) {
   );
 }
 
-function extractUser(response: AuthResponse) {
-  return response.user || response.data?.user;
+function extractUser(response: AuthResponse): AuthUser | undefined {
+  if (response.user) {
+    return response.user;
+  }
+
+  if (response.data?.user) {
+    return response.data.user;
+  }
+
+  // Your backend returns the user fields directly inside data.
+  if (response.data?.id && response.data?.email) {
+    return {
+      id: response.data.id,
+      name: response.data.name,
+      email: response.data.email,
+      role: response.data.role,
+    };
+  }
+
+  return undefined;
 }
 
 export async function login(
@@ -70,7 +93,7 @@ export async function register(
   email: string,
   password: string,
 ): Promise<AuthResponse> {
-  const response = await apiRequest<AuthResponse>('/auth/register', {
+  return apiRequest<AuthResponse>('/auth/register', {
     method: 'POST',
     body: JSON.stringify({
       name,
@@ -78,8 +101,6 @@ export async function register(
       password,
     }),
   });
-
-  return response;
 }
 
 export async function refreshAccessToken(): Promise<string | null> {
@@ -107,7 +128,7 @@ export async function logout(): Promise<void> {
       auth: true,
     });
   } catch {
-    // Local authentication state is still cleared below.
+    // Clear local authentication even if the API request fails.
   }
 
   clearAuth();
