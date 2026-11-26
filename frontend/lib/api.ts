@@ -1,6 +1,8 @@
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+const API_URL = (
+  process.env.NEXT_PUBLIC_API_URL ||
+  'https://bookloop-backend-qgj8.onrender.com/api'
+).replace(/\/+$/, '');
 
 type ApiOptions = Omit<RequestInit, 'body'> & {
   auth?: boolean;
@@ -47,11 +49,21 @@ export async function apiRequest<T>(
       ? JSON.stringify(body)
       : body as BodyInit | null | undefined;
 
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    ...requestOptions,
-    body: requestBody,
-    headers: requestHeaders,
-  });
+  const url = `${API_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+
+  let response: Response;
+
+  try {
+    response = await fetch(url, {
+      ...requestOptions,
+      body: requestBody,
+      headers: requestHeaders,
+    });
+  } catch {
+    throw new Error(
+      'Unable to connect to the BookLoop server. Please check your internet connection or try again later.',
+    );
+  }
 
   let data: unknown = null;
 
@@ -77,5 +89,5 @@ export async function apiRequest<T>(
 }
 
 export function getApiUrl(endpoint: string) {
-  return `${API_URL}${endpoint}`;
+  return `${API_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 }
