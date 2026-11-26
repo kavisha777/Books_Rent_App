@@ -1,0 +1,7 @@
+
+{
+  "name": "bookloop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BookLoop - Peer-to-peer book rental platform"
+}
